@@ -2,13 +2,32 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include "esp_now.h"
-#include "mykeyboard.h"
+#include "mymackeyboard.h"
 
 char messageToSend[250] = "";
 String messageReceived = "";
 String macAddress = "";
 String success;
 uint8_t peerAddress[6] = {0};
+
+void onReceiveCallback(const uint8_t *mac_addr, const uint8_t *data, int len) {
+    char incoming[251];
+    if (len > 250) len = 250;
+    memcpy(incoming, data, len);
+    incoming[len] = '\0';
+    messageReceived = String(incoming);
+
+    tft.setTextSize(2);
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
+    tft.drawCentreString(messageReceived, tft.width() / 2, tft.height() / 2, 1);
+}
+
+void onSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    success = (status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+    tft.setTextSize(2);
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
+    tft.drawCentreString(success, tft.width() / 2, tft.height() / 2, 1);
+}
 
 bool parseMacAddress(const String &macStr, uint8_t *macArray) {
     int values[6];
@@ -42,7 +61,10 @@ void initEspNow() {
 }
 
 void Pair() {
+    tft.setRotation(bruceConfig.rotation); // issues with rotation
     macAddress = MacKeyboard("", 17, "MAC ADDRESS");
+
+    Serial.printf("Paired: \"%s\"\n", macAddress.c_str());
 
     if (!parseMacAddress(macAddress, peerAddress)) {
         Serial.println("Invalid format! Use XX:XX...");
@@ -67,28 +89,11 @@ void Pair() {
 
 void startPair() {
     Serial.begin(115200);
+    tft.begin();
+    tft.setRotation(1);
     WiFi.mode(WIFI_STA);
     initEspNow();
     Pair();
-}
-
-void onReceiveCallback(const uint8_t *mac_addr, const uint8_t *data, int len) {
-    char incoming[251];
-    if (len > 250) len = 250; // for safety
-    memcpy(incoming, data, len);
-    incoming[len] = '\0';
-    messageReceived = String(incoming);
-
-    tft.setTextSize(2);
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-    tft.drawCentreString(messageReceived, tft.width() / 2, tft.height() / 2, 1);
-}
-
-void onSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    success = (status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
-    tft.setTextSize(2);
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-    tft.drawCentreString(success, tft.width() / 2, tft.height() / 2, 1);
 }
 
 void Send() {
@@ -107,22 +112,20 @@ void Send() {
 }
 
 void loopForEspNow() {
-    initEspNow();
     while (true) {
         if (check(PrevPress)) { return; }
-        String inputMsg = keyboard("", 220, "Message:"); // why would u even need 220?
+        String inputMsg = keyboard("", 76, "Message:");
+
+        Serial.printf("Message: \"%s\"\n", inputMsg.c_str());
 
         if (inputMsg.length() > 0) {
             strncpy(messageToSend, inputMsg.c_str(), sizeof(messageToSend));
             messageToSend[sizeof(messageToSend) - 1] = '\0';
-
             Send();
         } else {
             Serial.println("No message");
         }
 
-        for (int i = 0; i < 1000; i++) {
-            if (check(PrevPress)) { return; }
-        }
+        delay(10);
     }
 }
