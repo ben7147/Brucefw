@@ -39,18 +39,15 @@ public:
     RFMenu rfMenu;
     ScriptsMenu scriptsMenu;
     WifiMenu wifiMenu;
-<<<<<<< HEAD
     // EspNowMenu espnowMenu;
     EXTLedControlMenu ledMenu;
     TempHumidityMenu TempHumMenu;
     BuzzerMenu buzzerMenu;
-=======
 #if !defined(LITE_VERSION)
     EthernetMenu ethernetMenu;
 #endif
-    >>>>>>> main
 
-        MainMenu();
+    MainMenu();
     ~MainMenu();
 
     void begin(void);
