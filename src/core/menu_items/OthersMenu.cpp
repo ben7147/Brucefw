@@ -4,6 +4,7 @@
 #include "modules/badusb_ble/ducky_typer.h"
 #include "modules/bjs_interpreter/interpreter.h"
 #include "modules/others/clicker.h"
+#include "modules/others/cricket.h"
 #include "modules/others/ibutton.h"
 #include "modules/others/mic.h"
 #include "modules/others/openhaystack.h"
@@ -15,6 +16,7 @@ void OthersMenu::optionsMenu() {
     options = {
         {"QRCodes",      qrcode_menu                              },
         {"Megalodon",    shark_setup                              },
+        {"Cricket",      [=]() { startChirp(); }                  },
 #ifdef MIC_SPM1423
         {"Mic Spectrum", mic_test                                 },
         {"Mic Record",   mic_record                               }, //@deveclipse
