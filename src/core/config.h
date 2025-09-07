@@ -14,6 +14,7 @@ enum RFIDModules {
     PN532_SPI_MODULE = 2,
     RC522_SPI_MODULE = 3,
     ST25R3916_SPI_MODULE = 4,
+    PN532_I2C_SPI_MODULE = 5
 };
 
 enum RFModules {
@@ -61,6 +62,12 @@ public:
     WiFiCredential wifiAp = {"BruceNet", "brucenet"};
     std::map<String, String> wifi = {};
     std::set<String> evilWifiNames = {};
+    String wifiMAC = ""; //@IncursioHack
+
+    void setWifiMAC(const String &mac) {
+        wifiMAC = mac;
+        saveFile(); // opcional, para salvar imediatamente
+    }
 
     // BLE
     String bleName = String("Keyboard_" + String((uint8_t)(ESP.getEfuseMac() >> 32), HEX));

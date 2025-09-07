@@ -772,23 +772,23 @@ void drawStatusBar() {
         i++;
     } // Indication for SD card on screen
     if (gpsConnected) {
-        drawGpsSmall(tftWidth - (bat_margin + 20 * i), 7);
+        drawGpsSmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     }
     if (wifiConnected) {
-        drawWifiSmall(tftWidth - (bat_margin + 20 * i), 7);
+        drawWifiSmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     } // Draw Wifi Symbol beside battery
     if (isWebUIActive) {
-        drawWebUISmall(tftWidth - (bat_margin + 20 * i), 7);
+        drawWebUISmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     } // Draw Wifi Symbol beside battery
     if (BLEConnected) {
-        drawBLESmall(tftWidth - (bat_margin + 20 * i), 7);
+        drawBLESmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     } // Draw BLE beside Wifi
     if (isConnectedWireguard) {
-        drawWireguardStatus(tftWidth - (bat_margin + 21 * i), 7);
+        drawWireguardStatus(tftWidth - (bat_margin + 24 * i), 7);
         i++;
     } // Draw Wg bedide BLE, if the others exist, if not, beside battery
 
@@ -1226,7 +1226,7 @@ bool showJpeg(FS &fs, String filename, int x, int y, bool center) {
     delete[] data_array; // free heap before leaving
     return true;
 }
-
+#if !defined(LITE_VERSION)
 // ####################################################################################################
 //  Draw a GIF on the TFT
 //  derived from
@@ -1423,7 +1423,7 @@ bool showGif(FS *fs, const char *filename, int x, int y, bool center, int playDu
 
     return true;
 }
-
+#endif
 /***************************************************************************************
 ** Function name: getComplementaryColor2
 ** Description:   Get simple complementary color in RGB565 format
@@ -1625,7 +1625,9 @@ bool drawImg(FS &fs, String filename, int x, int y, bool center, int playDuratio
     if (ext.endsWith("jpg")) return showJpeg(fs, filename, x, y, center);
     else if (ext.endsWith("bmp")) return drawBmp(fs, filename, x, y, center);
     else if (ext.endsWith("png")) return drawPNG(fs, filename, x, y, center);
+#if !defined(LITE_VERSION)
     else if (ext.endsWith("gif")) return showGif(&fs, filename.c_str(), x, y, center, playDurationMs);
+#endif
     else log_e("Image not supported");
 
     return false;
