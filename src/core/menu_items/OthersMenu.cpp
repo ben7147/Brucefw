@@ -4,20 +4,25 @@
 #include "modules/badusb_ble/ducky_typer.h"
 #include "modules/bjs_interpreter/interpreter.h"
 #include "modules/others/clicker.h"
+#include "modules/others/cricket.h"
 #include "modules/others/ibutton.h"
 #include "modules/others/mic.h"
 #include "modules/others/openhaystack.h"
 #include "modules/others/qrcode_menu.h"
+#include "modules/others/random.h"
 #include "modules/others/timer.h"
 #include "modules/others/tururururu.h"
 
 void OthersMenu::optionsMenu() {
     options = {
+        {"Timer",        [=]() { Timer(); }                       },
+        {"Cricket",      [=]() { startChirp(); }                  },
+        {"Mic Record",   mic_record                               }, //@deveclipse
+        {"True/False",   [=]() { Randomizer(); }                  },
         {"QRCodes",      qrcode_menu                              },
         {"Megalodon",    shark_setup                              },
 #ifdef MIC_SPM1423
         {"Mic Spectrum", mic_test                                 },
-        {"Mic Record",   mic_record                               }, //@deveclipse
 #endif
         {"BadUSB",       [=]() { ducky_setup(hid_usb, false); }   },
         {"USB Keyboard", [=]() { ducky_keyboard(hid_usb, false); }},
@@ -29,7 +34,6 @@ void OthersMenu::optionsMenu() {
         {"Interpreter",  run_bjs_script                           },
 #endif
         {"iButton",      setup_ibutton                            },
-        {"Timer",        [=]() { Timer(); }                       },
     };
     addOptionToMainMenu();
 

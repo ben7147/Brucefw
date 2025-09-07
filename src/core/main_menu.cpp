@@ -5,33 +5,34 @@
 
 MainMenu::MainMenu() {
     _menuItems = {
-        &wifiMenu,
-        &bleMenu,
+        &this->wifiMenu,
+        &this->bleMenu,
 #if !defined(LITE_VERSION)
-        &ethernetMenu,
+        &this->ethernetMenu,
 #endif
 #if !defined(REMOVE_RF_MENU)
-        &rfMenu,
+        &this->rfMenu,
 #endif
 #if !defined(REMOVE_RFID_MENU)
-        &rfidMenu,
+        &this->rfidMenu,
 #endif
-        &irMenu,
-#if defined(FM_SI4713)
-        &fmMenu,
-#endif
-        &fileMenu,
-        &gpsMenu,
+        &this->irMenu,
+        &this->fmMenu,
+        &this->fileMenu,
+        &this->gpsMenu,
 #if !defined(REMOVE_NRF_MENU)
-        &nrf24Menu,
+        &this->nrf24Menu,
 #endif
 #if !defined(LITE_VERSION)
-        &scriptsMenu,
+        &this->scriptsMenu,
 #endif
-        &othersMenu,
-        &clockMenu,
-        &connectMenu,
-        &configMenu,
+        &this->ledMenu,
+        &this->TempHumMenu,
+        &this->buzzerMenu,
+        &this->othersMenu,
+        &this->clockMenu,
+        &this->connectMenu,
+        &this->configMenu,
     };
 
     _totalItems = _menuItems.size();

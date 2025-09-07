@@ -24,6 +24,10 @@ struct themeFiles {
     String config = "";
     String boot_img = "";
     String boot_sound = "";
+    String espnow = "";
+    String temp = "";
+    String led = "";
+    String buzzer = "";
 };
 
 struct themeInfo {
@@ -49,6 +53,7 @@ struct themeInfo {
     bool config = false;
     bool boot_img = false;
     bool boot_sound = false;
+    bool espnow = false;
 
     // Theme file paths, colors and border
     themeFiles paths;
