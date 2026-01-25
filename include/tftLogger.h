@@ -1,7 +1,5 @@
 #ifndef __DISPLAY_LOGER
 #define __DISPLAY_LOGER
-#include <precompiler_flags.h> //need to fetch the device Settings that are not in platformio.ini file
-#include <vector>
 #ifdef HAS_SCREEN
 #include <TFT_eSPI.h>
 #define BRUCE_TFT_DRIVER TFT_eSPI
@@ -49,9 +47,15 @@ private:
     tftLog log[MAX_LOG_ENTRIES];
     char images[MAX_LOG_IMAGES][MAX_LOG_IMG_PATH];
     uint8_t logWriteIndex = 0;
+    uint8_t logCount = 0;
+    bool isSleeping = false;
     bool logging = false;
     bool _logging = false;
     void clearLog();
+    bool async_serial = false;
+    TaskHandle_t asyncSerialTask = NULL;
+    QueueHandle_t asyncSerialQueue = NULL;
+    static void asyncSerialTaskFunc(void *pv);
 
 public:
     tft_logger(int16_t w = TFT_WIDTH, int16_t h = TFT_HEIGHT);
@@ -59,12 +63,19 @@ public:
     void setLogging(bool _log = true);
     bool inline getLogging(void) { return logging; };
 
+    // Disables tft writings on the display,
+    // Commands wont be passed to the display if isSleeping==true
+    // display will still be logged, in order to keep WebUI Navigator working
+    void inline setSleepMode(bool mode) { isSleeping = mode; }
+
     void getBinLog(uint8_t *outBuffer, size_t &outSize);
     bool removeLogEntriesInsideRect(int rx, int ry, int rw, int rh);
     void removeOverlappedImages(int x, int y, int center, int ms);
 
     void fillScreen(int32_t color);
-
+    void startAsyncSerial();
+    void stopAsyncSerial();
+    void getTftInfo();
     void imageToBin(uint8_t fs, String file, int x, int y, bool center, int Ms);
 
     void drawLine(int32_t x, int32_t y, int32_t x1, int32_t y1, int32_t color);
@@ -121,8 +132,23 @@ public:
 protected:
     bool isLogEqual(const tftLog &a, const tftLog &b);
     void pushLogIfUnique(const tftLog &l);
-    void checkAndLog(tftFuncs f, std::initializer_list<int32_t> values);
+    // void checkAndLog(tftFuncs f, std::initializer_list<int32_t> values);
+    template <typename... Args> void checkAndLog(tftFuncs f, Args... args) {
+        if (!logging) return;
 
+        uint8_t buffer[MAX_LOG_SIZE];
+        uint8_t pos = 0;
+        logWriteHeader(buffer, pos, f);
+
+        (writeUint16(buffer, pos, static_cast<uint16_t>(args)), ...);
+        buffer[1] = pos;
+
+        tftLog l;
+        memcpy(l.data, buffer, pos);
+        pushLogIfUnique(l);
+        if (isSleeping) return;
+        logging = false;
+    }
     void restoreLogger();
     void addLogEntry(const uint8_t *buffer, uint8_t size);
     void logWriteHeader(uint8_t *buffer, uint8_t &pos, tftFuncs fn);

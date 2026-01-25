@@ -8,7 +8,6 @@
 
 #ifndef __CHAMELEON_H__
 #define __CHAMELEON_H__
-
 #include <chameleonUltra.h>
 #include <set>
 
@@ -148,6 +147,7 @@ private:
     uint8_t selectSlot();
     bool isMifareClassic(byte sak);
     void saveScanResult();
+    void delayWithReturn(uint32_t ms);
 };
 
 #endif

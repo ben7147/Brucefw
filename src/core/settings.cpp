@@ -1,6 +1,8 @@
 #include "settings.h"
+#include "core/led_control.h"
 #include "core/wifi/wifi_common.h"
 #include "display.h"
+#include "modules/ble_api/ble_api.hpp"
 #include "modules/others/qrcode_menu.h"
 #include "modules/rf/rf_utils.h" // for initRfModule
 #include "mykeyboard.h"
@@ -10,6 +12,8 @@
 #include "utils.h"
 #include <ELECHOUSE_CC1101_SRC_DRV.h>
 #include <globals.h>
+
+int currentScreenBrightness = -1;
 
 // This function comes from interface.h
 void _setBrightness(uint8_t brightval) {}
@@ -23,6 +27,7 @@ void setBrightness(uint8_t brightval, bool save) {
     _setBrightness(brightval);
     delay(10);
 
+    currentScreenBrightness = brightval;
     if (save) { bruceConfig.setBright(brightval); }
 }
 
@@ -40,6 +45,8 @@ void getBrightness() {
 
     _setBrightness(bruceConfig.bright);
     delay(10);
+
+    currentScreenBrightness = bruceConfig.bright;
 }
 
 /*********************************************************************
@@ -47,7 +54,7 @@ void getBrightness() {
 **  get/set rotation value
 **********************************************************************/
 int gsetRotation(bool set) {
-    int getRot = bruceConfig.rotation;
+    int getRot = bruceConfigPins.rotation;
     int result = ROTATION;
     int mask = ROTATION > 1 ? -2 : 2;
 
@@ -69,7 +76,7 @@ int gsetRotation(bool set) {
         set = true;
     }
     if (set) {
-        bruceConfig.setRotation(result);
+        bruceConfigPins.setRotation(result);
         tft.setRotation(result);
         tft.setRotation(result); // must repeat, sometimes ESP32S3 miss one SPI command and it just
                                  // jumps this step and don't rotate
@@ -443,6 +450,7 @@ void setSoundVolume() {
     loopOptions(options, bruceConfig.soundVolume);
 }
 
+#ifdef HAS_RGB_LED
 /*********************************************************************
 **  Function: setLedBlinkConfig
 **  Enable or disable led blink
@@ -454,6 +462,7 @@ void setLedBlinkConfig() {
     };
     loopOptions(options, bruceConfig.ledBlinkEnabled);
 }
+#endif
 
 /*********************************************************************
 **  Function: setWifiStartupConfig
@@ -493,6 +502,97 @@ void removeEvilWifiMenu() {
 }
 
 /*********************************************************************
+**  Function: setEvilEndpointCreds
+**  Handles menu for changing the endpoint to access captured creds
+**********************************************************************/
+void setEvilEndpointCreds() {
+    String userInput = keyboard(bruceConfig.evilPortalEndpoints.getCredsEndpoint, 30, "Evil creds endpoint");
+    bruceConfig.setEvilEndpointCreds(userInput);
+}
+
+/*********************************************************************
+**  Function: setEvilEndpointSsid
+**  Handles menu for changing the endpoint to change evilSsid
+**********************************************************************/
+void setEvilEndpointSsid() {
+    String userInput = keyboard(bruceConfig.evilPortalEndpoints.setSsidEndpoint, 30, "Evil creds endpoint");
+    bruceConfig.setEvilEndpointSsid(userInput);
+}
+
+/*********************************************************************
+**  Function: setEvilAllowGetCredentials
+**  Handles menu for toggling access to the credential list endpoint
+**********************************************************************/
+
+void setEvilAllowGetCreds() {
+    options = {
+        {"Disallow",
+         [=]() { bruceConfig.setEvilAllowGetCreds(false); },
+         bruceConfig.evilPortalEndpoints.allowGetCreds == false},
+        {"Allow",
+         [=]() { bruceConfig.setEvilAllowGetCreds(true); },
+         bruceConfig.evilPortalEndpoints.allowGetCreds == true },
+    };
+    loopOptions(options, bruceConfig.evilPortalEndpoints.allowGetCreds);
+}
+
+/*********************************************************************
+**  Function: setEvilAllowGetCredentials
+**  Handles menu for toggling access to the change SSID endpoint
+**********************************************************************/
+
+void setEvilAllowSetSsid() {
+    options = {
+        {"Disallow",
+         [=]() { bruceConfig.setEvilAllowSetSsid(false); },
+         bruceConfig.evilPortalEndpoints.allowSetSsid == false},
+        {"Allow",
+         [=]() { bruceConfig.setEvilAllowSetSsid(true); },
+         bruceConfig.evilPortalEndpoints.allowSetSsid == true },
+    };
+    loopOptions(options, bruceConfig.evilPortalEndpoints.allowSetSsid);
+}
+
+/*********************************************************************
+**  Function: setEvilAllowEndpointDisplay
+**  Handles menu for toggling the display of the Evil Portal endpoints
+**********************************************************************/
+
+void setEvilAllowEndpointDisplay() {
+    options = {
+        {"Disallow",
+         [=]() { bruceConfig.setEvilAllowEndpointDisplay(false); },
+         bruceConfig.evilPortalEndpoints.showEndpoints == false},
+        {"Allow",
+         [=]() { bruceConfig.setEvilAllowEndpointDisplay(true); },
+         bruceConfig.evilPortalEndpoints.showEndpoints == true },
+    };
+    loopOptions(options, bruceConfig.evilPortalEndpoints.showEndpoints);
+}
+
+/*********************************************************************
+** Function: setEvilPasswordMode
+** Handles menu for setting the evil portal password mode
+***********************************************************************/
+void setEvilPasswordMode() {
+    options = {
+        {"Save 'password'",
+         [=]() { bruceConfig.setEvilPasswordMode(FULL_PASSWORD); },
+         bruceConfig.evilPortalPasswordMode == FULL_PASSWORD  },
+        {"Save 'p******d'",
+         [=]() { bruceConfig.setEvilPasswordMode(FIRST_LAST_CHAR); },
+         bruceConfig.evilPortalPasswordMode == FIRST_LAST_CHAR},
+        {"Save '*hidden*'",
+         [=]() { bruceConfig.setEvilPasswordMode(HIDE_PASSWORD); },
+         bruceConfig.evilPortalPasswordMode == HIDE_PASSWORD  },
+        {"Save length",
+         [=]() { bruceConfig.setEvilPasswordMode(SAVE_LENGTH); },
+         bruceConfig.evilPortalPasswordMode == SAVE_LENGTH    },
+    };
+    loopOptions(options, bruceConfig.evilPortalPasswordMode);
+}
+
+/*********************************************************************
 **  Function: setRFModuleMenu
 **  Handles Menu to set the RF module in use
 **********************************************************************/
@@ -500,8 +600,8 @@ void setRFModuleMenu() {
     int result = 0;
     int idx = 0;
     uint8_t pins_setup = 0;
-    if (bruceConfig.rfModule == M5_RF_MODULE) idx = 0;
-    else if (bruceConfig.rfModule == CC1101_SPI_MODULE) {
+    if (bruceConfigPins.rfModule == M5_RF_MODULE) idx = 0;
+    else if (bruceConfigPins.rfModule == CC1101_SPI_MODULE) {
         idx = 1;
 #if defined(ARDUINO_M5STICK_C_PLUS) || defined(ARDUINO_M5STICK_C_PLUS2)
         if (bruceConfigPins.CC1101_bus.mosi == GPIO_NUM_26) idx = 2;
@@ -536,6 +636,7 @@ void setRFModuleMenu() {
                  GPIO_NUM_NC}
             );
         } else if (pins_setup == 2) {
+#if CONFIG_SOC_GPIO_OUT_RANGE_MAX > 30
             result = CC1101_SPI_MODULE;
             bruceConfigPins.setCC1101Pins(
                 {(gpio_num_t)SDCARD_SCK,
@@ -545,9 +646,10 @@ void setRFModuleMenu() {
                  GPIO_NUM_32,
                  GPIO_NUM_NC}
             );
+#endif
         }
         if (initRfModule()) {
-            bruceConfig.setRfModule(CC1101_SPI_MODULE);
+            bruceConfigPins.setRfModule(CC1101_SPI_MODULE);
             return;
         }
         // else display an error
@@ -561,7 +663,7 @@ void setRFModuleMenu() {
         while (!check(AnyKeyPress)) vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     // fallback to "M5 RF433T/R" on errors
-    bruceConfig.setRfModule(M5_RF_MODULE);
+    bruceConfigPins.setRfModule(M5_RF_MODULE);
 }
 
 /*********************************************************************
@@ -570,17 +672,17 @@ void setRFModuleMenu() {
 **********************************************************************/
 void setRFFreqMenu() {
     float result = 433.92;
-    String freq_str = keyboard(String(bruceConfig.rfFreq), 10, "Default frequency:");
+    String freq_str = keyboard(String(bruceConfigPins.rfFreq), 10, "Default frequency:");
     if (freq_str.length() > 1) {
         result = freq_str.toFloat();          // returns 0 if not valid
         if (result >= 280 && result <= 928) { // TODO: check valid freq according to current module?
-            bruceConfig.setRfFreq(result);
+            bruceConfigPins.setRfFreq(result);
             return;
         }
     }
     // else
     displayError("Invalid frequency");
-    bruceConfig.setRfFreq(433.92); // reset to default
+    bruceConfigPins.setRfFreq(433.92); // reset to default
     delay(1000);
 }
 
@@ -591,28 +693,28 @@ void setRFFreqMenu() {
 void setRFIDModuleMenu() {
     options = {
         {"M5 RFID2",
-         [=]() { bruceConfig.setRfidModule(M5_RFID2_MODULE); },
-         bruceConfig.rfidModule == M5_RFID2_MODULE     },
+         [=]() { bruceConfigPins.setRfidModule(M5_RFID2_MODULE); },
+         bruceConfigPins.rfidModule == M5_RFID2_MODULE     },
 #ifdef M5STICK
         {"PN532 I2C G33",
-         [=]() { bruceConfig.setRfidModule(PN532_I2C_MODULE); },
-         bruceConfig.rfidModule == PN532_I2C_MODULE    },
+         [=]() { bruceConfigPins.setRfidModule(PN532_I2C_MODULE); },
+         bruceConfigPins.rfidModule == PN532_I2C_MODULE    },
         {"PN532 I2C G36",
-         [=]() { bruceConfig.setRfidModule(PN532_I2C_SPI_MODULE); },
-         bruceConfig.rfidModule == PN532_I2C_SPI_MODULE},
+         [=]() { bruceConfigPins.setRfidModule(PN532_I2C_SPI_MODULE); },
+         bruceConfigPins.rfidModule == PN532_I2C_SPI_MODULE},
 #else
         {"PN532 on I2C",
-         [=]() { bruceConfig.setRfidModule(PN532_I2C_MODULE); },
-         bruceConfig.rfidModule == PN532_I2C_MODULE},
+         [=]() { bruceConfigPins.setRfidModule(PN532_I2C_MODULE); },
+         bruceConfigPins.rfidModule == PN532_I2C_MODULE},
 #endif
         {"PN532 on SPI",
-         [=]() { bruceConfig.setRfidModule(PN532_SPI_MODULE); },
-         bruceConfig.rfidModule == PN532_SPI_MODULE    },
+         [=]() { bruceConfigPins.setRfidModule(PN532_SPI_MODULE); },
+         bruceConfigPins.rfidModule == PN532_SPI_MODULE    },
         {"RC522 on SPI",
-         [=]() { bruceConfig.setRfidModule(RC522_SPI_MODULE); },
-         bruceConfig.rfidModule == RC522_SPI_MODULE    },
+         [=]() { bruceConfigPins.setRfidModule(RC522_SPI_MODULE); },
+         bruceConfigPins.rfidModule == RC522_SPI_MODULE    },
     };
-    loopOptions(options, bruceConfig.rfidModule);
+    loopOptions(options, bruceConfigPins.rfidModule);
 }
 
 /*********************************************************************
@@ -659,29 +761,69 @@ void setClock() {
     if (auto_mode) {
         if (!wifiConnected) wifiConnectMenu();
 
-        auto createTimezoneSetter = [&](int timezone) {
-            return [&, timezone]() { bruceConfig.setTmz(timezone); };
+        float selectedTimezone = bruceConfig.tmz; // Store current timezone as default
+
+        struct TimezoneMapping {
+            const char *name;
+            float offset;
         };
 
-        options = {
-            {"Los Angeles", createTimezoneSetter(-8), bruceConfig.tmz == -8},
-            {"Chicago",     createTimezoneSetter(-6), bruceConfig.tmz == -6},
-            {"New York",    createTimezoneSetter(-5), bruceConfig.tmz == -5},
-            {"Brasilia",    createTimezoneSetter(-3), bruceConfig.tmz == -3},
-            {"Pernambuco",  createTimezoneSetter(-2), bruceConfig.tmz == -2},
-            {"Lisbon",      createTimezoneSetter(0),  bruceConfig.tmz == 0 },
-            {"Paris",       createTimezoneSetter(1),  bruceConfig.tmz == 1 },
-            {"Athens",      createTimezoneSetter(2),  bruceConfig.tmz == 2 },
-            {"Moscow",      createTimezoneSetter(3),  bruceConfig.tmz == 3 },
-            {"Dubai",       createTimezoneSetter(4),  bruceConfig.tmz == 4 },
-            {"Jakarta",     createTimezoneSetter(7),  bruceConfig.tmz == 7 },
-            {"Hong Kong",   createTimezoneSetter(8),  bruceConfig.tmz == 8 },
-            {"Tokyo",       createTimezoneSetter(9),  bruceConfig.tmz == 9 },
-            {"Sydney",      createTimezoneSetter(10), bruceConfig.tmz == 10},
+        constexpr TimezoneMapping timezoneMappings[] = {
+            {"UTC-12 (Baker Island, Howland Island)",     -12  },
+            {"UTC-11 (Niue, Pago Pago)",                  -11  },
+            {"UTC-10 (Honolulu, Papeete)",                -10  },
+            {"UTC-9 (Anchorage, Gambell)",                -9   },
+            {"UTC-9.5 (Marquesas Islands)",               -9.5 },
+            {"UTC-8 (Los Angeles, Vancouver, Tijuana)",   -8   },
+            {"UTC-7 (Denver, Phoenix, Edmonton)",         -7   },
+            {"UTC-6 (Mexico City, Chicago, Tegucigalpa)", -6   },
+            {"UTC-5 (New York, Toronto, Lima)",           -5   },
+            {"UTC-4 (Caracas, Santiago, La Paz)",         -4   },
+            {"UTC-3 (Brasilia, Sao Paulo, Montevideo)",   -3   },
+            {"UTC-2 (South Georgia, Mid-Atlantic)",       -2   },
+            {"UTC-1 (Azores, Cape Verde)",                -1   },
+            {"UTC+0 (London, Lisbon, Casablanca)",        0    },
+            {"UTC+0.5 (Tehran)",                          0.5  },
+            {"UTC+1 (Berlin, Paris, Rome)",               1    },
+            {"UTC+2 (Cairo, Athens, Johannesburg)",       2    },
+            {"UTC+3 (Moscow, Riyadh, Nairobi)",           3    },
+            {"UTC+3.5 (Tehran)",                          3.5  },
+            {"UTC+4 (Dubai, Baku, Muscat)",               4    },
+            {"UTC+4.5 (Kabul)",                           4.5  },
+            {"UTC+5 (Islamabad, Karachi, Tashkent)",      5    },
+            {"UTC+5.5 (New Delhi, Mumbai, Colombo)",      5.5  },
+            {"UTC+5.75 (Kathmandu)",                      5.75 },
+            {"UTC+6 (Dhaka, Almaty, Omsk)",               6    },
+            {"UTC+6.5 (Yangon, Cocos Islands)",           6.5  },
+            {"UTC+7 (Bangkok, Jakarta, Hanoi)",           7    },
+            {"UTC+8 (Beijing, Singapore, Perth)",         8    },
+            {"UTC+8.75 (Eucla)",                          8.75 },
+            {"UTC+9 (Tokyo, Seoul, Pyongyang)",           9    },
+            {"UTC+9.5 (Adelaide, Darwin)",                9.5  },
+            {"UTC+10 (Sydney, Melbourne, Vladivostok)",   10   },
+            {"UTC+10.5 (Lord Howe Island)",               10.5 },
+            {"UTC+11 (Solomon Islands, Nouméa)",          11   },
+            {"UTC+12 (Auckland, Fiji, Kamchatka)",        12   },
+            {"UTC+12.75 (Chatham Islands)",               12.75},
+            {"UTC+13 (Tonga, Phoenix Islands)",           13   },
+            {"UTC+14 (Kiritimati)",                       14   }
         };
+
+        options.clear();
+        int idx = sizeof(timezoneMappings) / sizeof(timezoneMappings[0]);
+        int i = 0;
+        for (const auto &mapping : timezoneMappings) {
+            if (bruceConfig.tmz == mapping.offset) { idx = i; }
+
+            options.emplace_back(
+                mapping.name, [=, &mapping]() { bruceConfig.setTmz(mapping.offset); }, idx == i
+            );
+            ++i;
+        }
+
         addOptionToMainMenu();
 
-        loopOptions(options);
+        loopOptions(options, idx);
 
         if (returnToMenu) return;
 
@@ -812,9 +954,9 @@ void runClockLoop() {
 **  get or set IR Tx Pin
 **********************************************************************/
 int gsetIrTxPin(bool set) {
-    int result = bruceConfig.irTx;
+    int result = bruceConfigPins.irTx;
 
-    if (result > 50) bruceConfig.setIrTxPin(LED);
+    if (result > 50) bruceConfigPins.setIrTxPin(TXLED);
     if (set) {
         options.clear();
         std::vector<std::pair<const char *, int>> pins;
@@ -822,7 +964,7 @@ int gsetIrTxPin(bool set) {
         int idx = 100;
         int j = 0;
         for (auto pin : pins) {
-            if (pin.second == bruceConfig.irTx && idx == 100) idx = j;
+            if (pin.second == bruceConfigPins.irTx && idx == 100) idx = j;
             j++;
 #ifdef ALLOW_ALL_GPIO_FOR_IR_RF
             int i = pin.second;
@@ -830,18 +972,20 @@ int gsetIrTxPin(bool set) {
                 i != TOUCH_CS && i != SDCARD_CS && i != SDCARD_MOSI && i != SDCARD_MISO)
 #endif
                 options.push_back(
-                    {pin.first, [=]() { bruceConfig.setIrTxPin(pin.second); }, pin.second == bruceConfig.irTx}
+                    {pin.first,
+                     [=]() { bruceConfigPins.setIrTxPin(pin.second); },
+                     pin.second == bruceConfigPins.irTx}
                 );
         }
 
         loopOptions(options, idx);
         options.clear();
 
-        Serial.println("Saved pin: " + String(bruceConfig.irTx));
+        Serial.println("Saved pin: " + String(bruceConfigPins.irTx));
     }
 
     returnToMenu = true;
-    return bruceConfig.irTx;
+    return bruceConfigPins.irTx;
 }
 
 void setIrTxRepeats() {
@@ -853,7 +997,7 @@ void setIrTxRepeats() {
         {"10 (+ 1 initial)", [&]() { chRpts = 10; }},
         {"Custom",           [&]() {
              // up to 99 repeats
-             String rpt = keyboard(String(bruceConfig.irTxRepeats), 2, "Nbr of Repeats (+ 1 initial)");
+             String rpt = keyboard(String(bruceConfigPins.irTxRepeats), 2, "Nbr of Repeats (+ 1 initial)");
              chRpts = static_cast<uint8_t>(rpt.toInt());
          }                       },
     };
@@ -863,16 +1007,16 @@ void setIrTxRepeats() {
 
     if (returnToMenu) return;
 
-    bruceConfig.setIrTxRepeats(chRpts);
+    bruceConfigPins.setIrTxRepeats(chRpts);
 }
 /*********************************************************************
 **  Function: gsetIrRxPin
 **  get or set IR Rx Pin
 **********************************************************************/
 int gsetIrRxPin(bool set) {
-    int result = bruceConfig.irRx;
+    int result = bruceConfigPins.irRx;
 
-    if (result > 45) bruceConfig.setIrRxPin(GROVE_SCL);
+    if (result > 45) bruceConfigPins.setIrRxPin(GROVE_SCL);
     if (set) {
         options.clear();
         std::vector<std::pair<const char *, int>> pins;
@@ -880,7 +1024,7 @@ int gsetIrRxPin(bool set) {
         int idx = -1;
         int j = 0;
         for (auto pin : pins) {
-            if (pin.second == bruceConfig.irRx && idx < 0) idx = j;
+            if (pin.second == bruceConfigPins.irRx && idx < 0) idx = j;
             j++;
 #ifdef ALLOW_ALL_GPIO_FOR_IR_RF
             int i = pin.second;
@@ -888,7 +1032,9 @@ int gsetIrRxPin(bool set) {
                 i != TOUCH_CS && i != SDCARD_CS && i != SDCARD_MOSI && i != SDCARD_MISO)
 #endif
                 options.push_back(
-                    {pin.first, [=]() { bruceConfig.setIrRxPin(pin.second); }, pin.second == bruceConfig.irRx}
+                    {pin.first,
+                     [=]() { bruceConfigPins.setIrRxPin(pin.second); },
+                     pin.second == bruceConfigPins.irRx}
                 );
         }
 
@@ -896,7 +1042,7 @@ int gsetIrRxPin(bool set) {
     }
 
     returnToMenu = true;
-    return bruceConfig.irRx;
+    return bruceConfigPins.irRx;
 }
 
 /*********************************************************************
@@ -904,9 +1050,9 @@ int gsetIrRxPin(bool set) {
 **  get or set RF Tx Pin
 **********************************************************************/
 int gsetRfTxPin(bool set) {
-    int result = bruceConfig.rfTx;
+    int result = bruceConfigPins.rfTx;
 
-    if (result > 45) bruceConfig.setRfTxPin(GROVE_SDA);
+    if (result > 45) bruceConfigPins.setRfTxPin(GROVE_SDA);
     if (set) {
         options.clear();
         std::vector<std::pair<const char *, int>> pins;
@@ -914,7 +1060,7 @@ int gsetRfTxPin(bool set) {
         int idx = -1;
         int j = 0;
         for (auto pin : pins) {
-            if (pin.second == bruceConfig.rfTx && idx < 0) idx = j;
+            if (pin.second == bruceConfigPins.rfTx && idx < 0) idx = j;
             j++;
 #ifdef ALLOW_ALL_GPIO_FOR_IR_RF
             int i = pin.second;
@@ -922,7 +1068,9 @@ int gsetRfTxPin(bool set) {
                 i != TOUCH_CS && i != SDCARD_CS && i != SDCARD_MOSI && i != SDCARD_MISO)
 #endif
                 options.push_back(
-                    {pin.first, [=]() { bruceConfig.setRfTxPin(pin.second); }, pin.second == bruceConfig.rfTx}
+                    {pin.first,
+                     [=]() { bruceConfigPins.setRfTxPin(pin.second); },
+                     pin.second == bruceConfigPins.rfTx}
                 );
         }
 
@@ -931,7 +1079,7 @@ int gsetRfTxPin(bool set) {
     }
 
     returnToMenu = true;
-    return bruceConfig.rfTx;
+    return bruceConfigPins.rfTx;
 }
 
 /*********************************************************************
@@ -939,9 +1087,9 @@ int gsetRfTxPin(bool set) {
 **  get or set FR Rx Pin
 **********************************************************************/
 int gsetRfRxPin(bool set) {
-    int result = bruceConfig.rfRx;
+    int result = bruceConfigPins.rfRx;
 
-    if (result > 36) bruceConfig.setRfRxPin(GROVE_SCL);
+    if (result > 36) bruceConfigPins.setRfRxPin(GROVE_SCL);
     if (set) {
         options.clear();
         std::vector<std::pair<const char *, int>> pins;
@@ -949,7 +1097,7 @@ int gsetRfRxPin(bool set) {
         int idx = -1;
         int j = 0;
         for (auto pin : pins) {
-            if (pin.second == bruceConfig.rfRx && idx < 0) idx = j;
+            if (pin.second == bruceConfigPins.rfRx && idx < 0) idx = j;
             j++;
 #ifdef ALLOW_ALL_GPIO_FOR_IR_RF
             int i = pin.second;
@@ -957,7 +1105,9 @@ int gsetRfRxPin(bool set) {
                 i != TOUCH_CS && i != SDCARD_CS && i != SDCARD_MOSI && i != SDCARD_MISO)
 #endif
                 options.push_back(
-                    {pin.first, [=]() { bruceConfig.setRfRxPin(pin.second); }, pin.second == bruceConfig.rfRx}
+                    {pin.first,
+                     [=]() { bruceConfigPins.setRfRxPin(pin.second); },
+                     pin.second == bruceConfigPins.rfRx}
                 );
         }
 
@@ -966,7 +1116,7 @@ int gsetRfRxPin(bool set) {
     }
 
     returnToMenu = true;
-    return bruceConfig.rfRx;
+    return bruceConfigPins.rfRx;
 }
 
 /*********************************************************************
@@ -1002,14 +1152,16 @@ void setStartupApp() {
 **********************************************************************/
 void setGpsBaudrateMenu() {
     options = {
-        {"9600 bps",   [=]() { bruceConfig.setGpsBaudrate(9600); },   bruceConfig.gpsBaudrate == 9600  },
-        {"19200 bps",  [=]() { bruceConfig.setGpsBaudrate(19200); },  bruceConfig.gpsBaudrate == 19200 },
-        {"38400 bps",  [=]() { bruceConfig.setGpsBaudrate(38400); },  bruceConfig.gpsBaudrate == 38400 },
-        {"57600 bps",  [=]() { bruceConfig.setGpsBaudrate(57600); },  bruceConfig.gpsBaudrate == 57600 },
-        {"115200 bps", [=]() { bruceConfig.setGpsBaudrate(115200); }, bruceConfig.gpsBaudrate == 115200},
+        {"9600 bps",   [=]() { bruceConfigPins.setGpsBaudrate(9600); },  bruceConfigPins.gpsBaudrate == 9600 },
+        {"19200 bps",  [=]() { bruceConfigPins.setGpsBaudrate(19200); }, bruceConfigPins.gpsBaudrate == 19200},
+        {"38400 bps",  [=]() { bruceConfigPins.setGpsBaudrate(38400); }, bruceConfigPins.gpsBaudrate == 38400},
+        {"57600 bps",  [=]() { bruceConfigPins.setGpsBaudrate(57600); }, bruceConfigPins.gpsBaudrate == 57600},
+        {"115200 bps",
+         [=]() { bruceConfigPins.setGpsBaudrate(115200); },
+         bruceConfigPins.gpsBaudrate == 115200                                                               },
     };
 
-    loopOptions(options, bruceConfig.gpsBaudrate);
+    loopOptions(options, bruceConfigPins.gpsBaudrate);
 }
 
 /*********************************************************************
@@ -1019,16 +1171,16 @@ void setGpsBaudrateMenu() {
 void setBleNameMenu() {
     const String defaultBleName = "Keyboard_" + String((uint8_t)(ESP.getEfuseMac() >> 32), HEX);
 
-    const bool isDefault = bruceConfig.bleName == defaultBleName;
+    const bool isDefault = bruceConfigPins.bleName == defaultBleName;
 
     options = {
-        {"Default", [=]() { bruceConfig.setBleName(defaultBleName); }, isDefault },
+        {"Default", [=]() { bruceConfigPins.setBleName(defaultBleName); }, isDefault },
         {"Custom",
          [=]() {
-             String newBleName = keyboard(bruceConfig.bleName, 30, "BLE Device Name:");
-             if (!newBleName.isEmpty()) bruceConfig.setBleName(newBleName);
+             String newBleName = keyboard(bruceConfigPins.bleName, 30, "BLE Device Name:");
+             if (!newBleName.isEmpty()) bruceConfigPins.setBleName(newBleName);
              else displayError("BLE Name cannot be empty", true);
-         },                                                            !isDefault},
+         },                                                                !isDefault},
     };
     addOptionToMainMenu();
 
@@ -1107,6 +1259,66 @@ void setNetworkCredsMenu() {
     addOptionToMainMenu();
 
     loopOptions(options);
+}
+
+/*********************************************************************
+**  Function: setBadUSBBLEMenu
+**  Main Menu for setting Bad USB/BLE options
+**********************************************************************/
+void setBadUSBBLEMenu() {
+    options = {
+        {"Keyboard Layout", setBadUSBBLEKeyboardLayoutMenu},
+        {"Key Delay",       setBadUSBBLEKeyDelayMenu      },
+    };
+    addOptionToMainMenu();
+
+    loopOptions(options);
+}
+
+/*********************************************************************
+**  Function: setBadUSBBLEKeyboardLayoutMenu
+**  Main Menu for setting Bad USB/BLE Keyboard Layout
+**********************************************************************/
+void setBadUSBBLEKeyboardLayoutMenu() {
+
+    uint8_t opt = bruceConfig.badUSBBLEKeyboardLayout;
+
+    options.clear();
+    options = {
+        {"US International",      [&]() { opt = 0; } },
+        {"Danish",                [&]() { opt = 1; } },
+        {"English (UK)",          [&]() { opt = 2; } },
+        {"French (AZERTY)",       [&]() { opt = 3; } },
+        {"German",                [&]() { opt = 4; } },
+        {"Hungarian",             [&]() { opt = 5; } },
+        {"Italian",               [&]() { opt = 6; } },
+        {"Polish",                [&]() { opt = 7; } },
+        {"Portuguese (Brazil)",   [&]() { opt = 8; } },
+        {"Portuguese (Portugal)", [&]() { opt = 9; } },
+        {"Slovenian",             [&]() { opt = 10; }},
+        {"Spanish",               [&]() { opt = 11; }},
+        {"Swedish",               [&]() { opt = 12; }},
+        {"Turkish",               [&]() { opt = 13; }},
+    };
+    addOptionToMainMenu();
+
+    loopOptions(options, opt);
+
+    if (opt != bruceConfig.badUSBBLEKeyboardLayout) { bruceConfig.setBadUSBBLEKeyboardLayout(opt); }
+}
+
+/*********************************************************************
+**  Function: setBadUSBBLEKeyDelayMenu
+**  Main Menu for setting Bad USB/BLE Keyboard Key Delay
+**********************************************************************/
+void setBadUSBBLEKeyDelayMenu() {
+    String delayStr = keyboard(String(bruceConfig.badUSBBLEKeyDelay), 4, "Key Delay (ms):");
+    uint8_t delayVal = static_cast<uint8_t>(delayStr.toInt());
+    if (delayVal >= 25 && delayVal <= 500) {
+        bruceConfig.setBadUSBBLEKeyDelay(delayVal);
+    } else if (delayVal != 0) {
+        displayError("Invalid key delay value (25 to 500)", true);
+    }
 }
 
 /*********************************************************************
@@ -1311,6 +1523,14 @@ void setTheme() {
              bruceConfig.secColor = DEFAULT_SECCOLOR;
              bruceConfig.bgColor = TFT_BLACK;
              bruceConfig.setUiColor(DEFAULT_PRICOLOR);
+#ifdef HAS_RGB_LED
+             bruceConfig.ledBright = 50;
+             bruceConfig.ledColor = 0x960064;
+             bruceConfig.ledEffect = 0;
+             bruceConfig.ledEffectSpeed = 5;
+             bruceConfig.ledEffectDirection = 1;
+             ledSetup();
+#endif
              bruceConfig.saveFile();
              fs = nullptr;
          }                                     },
@@ -1323,7 +1543,7 @@ void setTheme() {
     if (fs == nullptr) return;
 
     String filepath = loopSD(*fs, true, "JSON");
-    if (bruceConfig.openThemeFile(fs, filepath)) {
+    if (bruceConfig.openThemeFile(fs, filepath, true)) {
         bruceConfig.themePath = filepath;
         if (fs == &LittleFS) bruceConfig.theme.fs = 1;
         else if (fs == &SD) bruceConfig.theme.fs = 2;
@@ -1332,3 +1552,21 @@ void setTheme() {
         bruceConfig.saveFile();
     }
 }
+#if !defined(LITE_VERSION)
+BLE_API bleApi;
+static bool ble_api_enabled = false;
+
+void enableBLEAPI() {
+    if (!ble_api_enabled) {
+        // displayWarning("BLE API require huge amount of RAM.");
+        // displayWarning("Some features may stop working.");
+        Serial.println(ESP.getFreeHeap());
+        bleApi.setup();
+        Serial.println(ESP.getFreeHeap());
+    } else {
+        bleApi.end();
+    }
+
+    ble_api_enabled = !ble_api_enabled;
+}
+#endif

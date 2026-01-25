@@ -8,6 +8,10 @@ XPowersAXP2101 axp192;
 #include <TouchDrvFT6X36.hpp>
 TouchDrvFT6X36 touch;
 
+// Haptic
+#include "SensorDRV2605.hpp"
+SensorDRV2605 drv;
+
 /***************************************************************************************
 ** Function name: _setup_gpio()
 ** Location: main.cpp
@@ -42,8 +46,8 @@ void _setup_gpio() {
     axp192.enableALDO1(); //! RTC VBAT
     axp192.enableALDO2(); //! TFT BACKLIGHT   VDD
     axp192.enableALDO3(); //! Screen touch VDD
-    // axp192.enableALDO4();  //! Radio VDD
-    // axp192.enableBLDO2();  //! drv2605 enable
+    axp192.enableALDO4(); //! Radio VDD
+    axp192.enableBLDO2(); //! drv2605 enable
     //  Set the time of pressing the button to turn off
     axp192.setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
     // Set the button power-on press time
@@ -84,6 +88,25 @@ void _setup_gpio() {
     touch.begin(Wire1, FT6X36_SLAVE_ADDRESS, 39, 40);
     touch.setSwapXY(true);
     touch.interruptPolling();
+
+    // Disable RF and NRF Menus for default
+    bruceConfig.disabledMenus.push_back("RF");
+    bruceConfig.disabledMenus.push_back("NRF24");
+
+    // Haptic driver
+    if (!drv.begin(Wire, 10, 11)) {
+        Serial.println("Failed to find DRV2605.");
+    } else {
+        Serial.println("Init DRV2605 Sensor success!");
+        drv.selectLibrary(1);
+        drv.setMode(SensorDRV2605::MODE_INTTRIG);
+        drv.useERM();
+
+        // Startup buzz
+        drv.setWaveform(0, 70);
+        drv.setWaveform(1, 0);
+        drv.run();
+    }
 }
 
 /***************************************************************************************
@@ -94,9 +117,8 @@ void _setup_gpio() {
 void _post_setup_gpio() {
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
-    ledcSetup(TFT_BRIGHT_CHANNEL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits); // Channel 0, 10khz, 8bits
-    ledcAttachPin(TFT_BL, TFT_BRIGHT_CHANNEL);
-    ledcWrite(TFT_BRIGHT_CHANNEL, 255);
+    ledcAttach(TFT_BL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits);
+    ledcWrite(TFT_BL, 255);
 }
 
 /***************************************************************************************
@@ -123,8 +145,8 @@ void _setBrightness(uint8_t brightval) {
     else if (brightval == 0) dutyCycle = 0;
     else dutyCycle = ((brightval * 255) / 100);
 
-    log_i("dutyCycle for bright 0-255: %d", dutyCycle);
-    ledcWrite(TFT_BRIGHT_CHANNEL, dutyCycle); // Channel 0
+    // log_i("dutyCycle for bright 0-255: %d", dutyCycle);
+    ledcWrite(TFT_BL, dutyCycle);
 }
 
 bool getTouched() { return digitalRead(16) == LOW; }
@@ -144,21 +166,21 @@ void InputHandler(void) {
         if (getTouched()) {
             touch.getPoint(t.x, t.y, 1);
             // Serial.printf("\nRAW: Touch Pressed on x=%d, y=%d",t.x, t.y);
-            if (bruceConfig.rotation == 3) {
+            if (bruceConfigPins.rotation == 3) {
                 t.y[0] = (tftHeight + 20) - t.y[0];
                 t.x[0] = t.x[0];
             }
-            if (bruceConfig.rotation == 0) {
+            if (bruceConfigPins.rotation == 0) {
                 int tmp = t.x[0];
                 t.x[0] = tftWidth - t.y[0];
                 t.y[0] = tftHeight - tmp;
             }
-            if (bruceConfig.rotation == 2) {
+            if (bruceConfigPins.rotation == 2) {
                 int tmp = t.x[0];
                 t.x[0] = t.y[0];
                 t.y[0] = tmp;
             }
-            if (bruceConfig.rotation == 1) { t.x[0] = tftWidth - t.x[0]; }
+            if (bruceConfigPins.rotation == 1) { t.x[0] = tftWidth - t.x[0]; }
             // Serial.printf("\nROT: Touch Pressed on x=%d, y=%d\n",t.x[0], t.y[0]);
 
             if (!wakeUpScreen()) AnyKeyPress = true;
@@ -171,6 +193,9 @@ void InputHandler(void) {
             touchHeatMap(touchPoint);
 
             tm = millis();
+            drv.setWaveform(0, 75);
+            drv.setWaveform(1, 0); // end waveform
+            drv.run();
         }
     }
 }

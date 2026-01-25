@@ -16,7 +16,7 @@ Distributed under Creative Commons 2.5 -- Attribution & Share Alike
 #include "core/sd_functions.h"
 #include "core/settings.h"
 #include "core/utils.h"
-
+#include "ir_utils.h"
 /*
 Last Updated: 30 Mar. 2018
 By Anton Grimpelhuber (anton.grimpelhuber@gmail.com)
@@ -110,7 +110,7 @@ void checkIrTxPin() {
     const std::vector<std::pair<String, int>> pins = IR_TX_PINS;
     int count = 0;
     for (auto pin : pins) {
-        if (pin.second == bruceConfig.irTx) count++;
+        if (pin.second == bruceConfigPins.irTx) count++;
     }
     if (count > 0) return;
     else gsetIrTxPin(true);
@@ -122,9 +122,9 @@ void StartTvBGone() {
     PPM.enableOTG();
 #endif
     checkIrTxPin();
-    IRsend irsend(bruceConfig.irTx); // Set the GPIO to be used to sending the message.
+    IRsend irsend(bruceConfigPins.irTx); // Set the GPIO to be used to sending the message.
     irsend.begin();
-    pinMode(bruceConfig.irTx, OUTPUT);
+    setup_ir_pin(bruceConfigPins.irTx, OUTPUT);
 
     // determine region
     options = {
@@ -197,11 +197,11 @@ void StartTvBGone() {
         }
 
         // turnoff LED
-        digitalWrite(bruceConfig.irTx, LED_OFF);
-           
-  #ifdef USE_BOOST
+        digitalWrite(bruceConfigPins.irTx, LED_OFF);
 
- /// DISABLE 5V OUTPUT
+#ifdef USE_BOOST
+
+        /// DISABLE 5V OUTPUT
         PPM.disableOTG();
 #endif
     }

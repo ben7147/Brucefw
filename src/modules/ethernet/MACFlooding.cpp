@@ -7,7 +7,7 @@
  * @version 0.1
  * @date 2025-07-15
  */
-
+#if !defined(LITE_VERSION)
 #include "MACFlooding.h"
 #include "Arduino.h"
 #include "core/display.h"
@@ -45,38 +45,14 @@ MACFlooding::~MACFlooding() { pbuf_free(p); }
 void MACFlooding::show_gui() {
     drawMainBorderWithTitle("MAC Flooding");
 
-    displayTextLine("Press prev to stop");
+    displayTextLine("Press Any key to stop");
 }
 
 void MACFlooding::loop() {
+    AnyKeyPress = false;
     while (true) {
         send_packet();
-        if (PrevPress) {
-#if !defined(HAS_KEYBOARD) && !defined(HAS_ENCODER)
-            LongPress = true;
-            long _tmp = millis();
-            while (PrevPress) {
-                if (millis() - _tmp > 150)
-                    tft.drawArc(
-                        tftWidth / 2,
-                        tftHeight / 2,
-                        25,
-                        15,
-                        0,
-                        360 * (millis() - _tmp) / 700,
-                        getColorVariation(bruceConfig.priColor),
-                        bruceConfig.bgColor
-                    );
-                vTaskDelay(10 / portTICK_RATE_MS);
-            }
-            LongPress = false;
-            if (millis() - _tmp > 700) { // longpress detected to exit
-                returnToMenu = true;
-                break;
-            }
-#endif
-            check(PrevPress);
-        }
+        if (check(AnyKeyPress)) { break; }
     }
 }
 
@@ -114,18 +90,29 @@ void MACFlooding::prepare_packet_hdr() {
     ipv4_pkt._len = htons(20);    // 20, total len
     ipv4_pkt._id = random(65535); // Avoid overflow limiting random to u16
     ipv4_pkt._offset = 0x0;
-    ipv4_pkt._ttl = htons(0x40); // TTL: 64
-    ipv4_pkt._proto = 0x11;      // Protocol: 17(UDP)
+    ipv4_pkt._ttl = static_cast<u8_t>(htons(0x40)); // TTL: 64
+    ipv4_pkt._proto = 0x11;                         // Protocol: 17(UDP)
 
     // memcpy(&ipv4_pkt.dest.addr, broadcast_mac_address, 4);
 
-    uint8_t src_ip[4] = {random(255), random(255), random(255), random(255)};
+    uint8_t src_ip[4] = {
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255))
+    };
     memcpy(&ipv4_pkt.src.addr, src_ip, 4);
 
-    uint8_t dst_ip[4] = {random(255), random(255), random(255), random(255)};
+    uint8_t dst_ip[4] = {
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255)),
+        static_cast<uint8_t>(random(255))
+    };
     memcpy(&ipv4_pkt.dest.addr, dst_ip, 4);
 
-    ipv4_pkt._chksum = htons(calculate_ip_checksum()
+    ipv4_pkt._chksum = htons(
+        calculate_ip_checksum()
     ); // Since we change ip src and dst everytime, recalculate CRC of IP header
 }
 
@@ -155,7 +142,7 @@ void MACFlooding::setup() {
         return;
     }
 
-    p = pbuf_alloc(PBUF_RAW, PACKET_LENGTH, PBUF_RAM);
+    p = pbuf_alloc(PBUF_RAW, PACKET_LENGTH_MF, PBUF_RAM);
     if (p == NULL) {
         displayError("Failed to allocate pbuf");
         Serial.println("Failed to allocate pbuf");
@@ -180,3 +167,4 @@ void MACFlooding::send_packet() {
     // Send packet
     netif->linkoutput(netif, p);
 }
+#endif

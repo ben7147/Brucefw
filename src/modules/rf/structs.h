@@ -2,11 +2,12 @@
 #define RF_STRUCTS_H
 
 #include "core/display.h"
-#include <driver/rmt.h>
+#include <driver/rmt_rx.h>
+#include <driver/rmt_tx.h>
 
 struct RawRecording {
     float frequency;
-    std::vector<rmt_item32_t *> codes;
+    std::vector<rmt_symbol_word_t *> codes;
     std::vector<uint16_t> codeLengths;
     std::vector<uint16_t> gaps;
 };
@@ -21,7 +22,6 @@ struct RawRecordingStatus {
     unsigned long lastSignalTime = 0;  // Store the time of the latest signal
     unsigned long lastRssiUpdate = 0;
 };
-
 struct RfCodes {
     uint32_t frequency = 0;
     uint64_t key = 0;

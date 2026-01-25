@@ -7,44 +7,71 @@
 #include "modules/rfid/chameleon.h"
 #include "modules/rfid/pn532ble.h"
 #include "modules/rfid/rfid125.h"
+#include "modules/rfid/srix_tool.h" //added for srix Tool
 #include "modules/rfid/tag_o_matic.h"
 
+#ifndef LITE_VERSION
+#include "modules/rfid/emv_reader.hpp"
+#endif
 void RFIDMenu::optionsMenu() {
     options = {
+#if !defined(REMOVE_RFID_HW_INTERFACE)  // Remove Hardware interface menu due to lack of external GPIO
         {"Read tag",    [=]() { TagOMatic(); }                          },
+#ifndef LITE_VERSION
+        {"Read EMV",    [=]() { EMVReader(); }                          },
+#endif
         {"Read 125kHz", [=]() { RFID125(); }                            },
         {"Scan tags",   [=]() { TagOMatic(TagOMatic::SCAN_MODE); }      },
         {"Load file",   [=]() { TagOMatic(TagOMatic::LOAD_MODE); }      },
         {"Erase data",  [=]() { TagOMatic(TagOMatic::ERASE_MODE); }     },
         {"Write NDEF",  [=]() { TagOMatic(TagOMatic::WRITE_NDEF_MODE); }},
+#endif
+#ifndef LITE_VERSION
         {"Amiibolink",  [=]() { Amiibo(); }                             },
+#endif
         {"Chameleon",   [=]() { Chameleon(); }                          },
+#ifndef LITE_VERSION
         {"PN532 BLE",   [=]() { Pn532ble(); }                           },
+#if !defined(REMOVE_RFID_HW_INTERFACE)  // Remove Hardware interface menu due to lack of external GPIO
         {"PN532 UART",  [=]() { PN532KillerTools(); }                   },
-        {"Config",      [=]() { configMenu(); }                         },
+#endif
+#endif
+        {"Config",      [this]() { configMenu(); }                      },
     };
+
+#if !defined(REMOVE_RFID_HW_INTERFACE)
+#ifndef LITE_VERSION
+    if (bruceConfigPins.rfidModule == PN532_I2C_MODULE) {
+        // Added SRIX Menu only if PN is set to i2c mode
+        options.insert(options.begin() + 3, {"SRIX Tool", [=]() { PN532_SRIX(); }});
+    }
+#endif
+#endif
+
     addOptionToMainMenu();
 
-    delay(200);
+    vTaskDelay(pdMS_TO_TICKS(200));
 
     String txt = "RFID";
-    if (bruceConfig.rfidModule == M5_RFID2_MODULE) txt += " (RFID2)";
+    if (bruceConfigPins.rfidModule == M5_RFID2_MODULE) txt += " (RFID2)";
 #ifdef M5STICK
-    else if (bruceConfig.rfidModule == PN532_I2C_MODULE) txt += " (PN532-G33)";
-    else if (bruceConfig.rfidModule == PN532_I2C_SPI_MODULE) txt += " (PN532-G36)";
+    else if (bruceConfigPins.rfidModule == PN532_I2C_MODULE) txt += " (PN532-G33)";
+    else if (bruceConfigPins.rfidModule == PN532_I2C_SPI_MODULE) txt += " (PN532-G36)";
 #else
-    else if (bruceConfig.rfidModule == PN532_I2C_MODULE) txt += " (PN532-I2C)";
+    else if (bruceConfigPins.rfidModule == PN532_I2C_MODULE) txt += " (PN532-I2C)";
 #endif
-    else if (bruceConfig.rfidModule == PN532_SPI_MODULE) txt += " (PN532-SPI)";
-    else if (bruceConfig.rfidModule == RC522_SPI_MODULE) txt += " (RC522-SPI)";
+    else if (bruceConfigPins.rfidModule == PN532_SPI_MODULE) txt += " (PN532-SPI)";
+    else if (bruceConfigPins.rfidModule == RC522_SPI_MODULE) txt += " (RC522-SPI)";
     loopOptions(options, MENU_TYPE_SUBMENU, txt.c_str());
 }
 
 void RFIDMenu::configMenu() {
     options = {
-        {"RFID Module", setRFIDModuleMenu       },
-        {"Add MIF Key", addMifareKeyMenu        },
-        {"Back",        [=]() { optionsMenu(); }},
+#if !defined(REMOVE_RFID_HW_INTERFACE)  // Remove Hardware interface menu due to lack of external GPIO
+        {"RFID Module", setRFIDModuleMenu          },
+#endif
+        {"Add MIF Key", addMifareKeyMenu           },
+        {"Back",        [this]() { optionsMenu(); }},
     };
 
     loopOptions(options, MENU_TYPE_SUBMENU, "RFID Config");

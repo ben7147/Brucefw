@@ -3,7 +3,9 @@
 # :shark: Bruce
 
 Bruce is meant to be a versatile ESP32 firmware that supports a ton of offensive features focusing on facilitating Red Team operations.
-It also supports m5stack products and works great with Cardputer, Sticks, M5Cores, T-Decks and T-Embeds.
+It also supports M5stack and Lilygo products and works great with Cardputer, Sticks, M5Cores, T-Decks and T-Embeds.
+
+**Check our fully open-source hardware too:** https://bruce.computer/boards
 
 ## :building_construction: How to install
 
@@ -52,9 +54,11 @@ Also, [read our FAQ](https://github.com/pr3y/Bruce/wiki/FAQ)
 - [x] [RAW Sniffer](https://github.com/pr3y/Bruce/wiki/WiFi#raw-sniffer)
 - [x] [TCP Client](https://github.com/pr3y/Bruce/wiki/WiFi#tcp-client)
 - [x] [TCP Listener](https://github.com/pr3y/Bruce/wiki/WiFi#tcp-listener)
-- [x] [DPWO-ESP32](https://github.com/pr3y/Bruce/wiki/WiFi#dpwo-esp32)
 - [x] [Evil Portal](https://github.com/pr3y/Bruce/wiki/WiFi#evil-portal)
-- [x] [Scan Hosts](https://github.com/pr3y/Bruce/wiki/WiFi#evil-portal)
+- [x] [Scan Hosts](https://github.com/pr3y/Bruce/wiki/WiFi#evil-portal) (with TCP Port scanning)
+- [x] [Responder](https://github.com/BruceDevices/firmware/wiki/WiFi#responder)
+- [x] [Arp Spoofing](https://github.com/BruceDevices/firmware/wiki/WiFi#arp-spoofing)
+- [x] [Arp Poisoning](https://github.com/BruceDevices/firmware/wiki/WiFi#arp-poisoning)
 - [x] [Wireguard Tunneling](https://github.com/pr3y/Bruce/wiki/WiFi#wireguard-tunneling)
 - [x] Brucegotchi
   - [x] Pwnagotchi friend
@@ -174,7 +178,6 @@ Also, [read our FAQ](https://github.com/pr3y/Bruce/wiki/FAQ)
 - [x] Megalodon
 - [x] [BADUsb (New features, LittleFS and SDCard)](https://github.com/pr3y/Bruce/wiki/Others#badusb)
 - [x] USB Keyboard - Cardputer and T-Deck Only
-- [x] [Openhaystack](https://github.com/pr3y/Bruce/wiki/Others#openhaystack)
 - [x] [iButton](https://github.com/pr3y/Bruce/wiki/Others#ibutton)
 - [x] [LED Control](https://github.com/pr3y/Bruce/wiki/Others#led-control)
 </details>
@@ -212,7 +215,7 @@ Also, [read our FAQ](https://github.com/pr3y/Bruce/wiki/FAQ)
 ## Specific functions per Device, the ones not mentioned here are available to all.
 | Device                  | CC1101    | NRF24    | FM Radio  | PN532     | Mic   | BadUSB    | RGB Led | Speaker   | Fuel Guage | LITE_VERSION |
 | ---                     | :---:     | :---:    | :---:     | :---:     | :---: | :---:     | :---:   | :---:     | :---:      | :---:     |
-| [M5Stack Cardputer](https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps)       | :ok:      | :ok:     | :ok:      | :ok:      | :ok:  | :ok:      | :ok:    | NS4168    | :x:        | :x:       |
+| [M5Stack Cardputer](https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps) (and ADV)      | :ok:      | :ok:     | :ok:      | :ok:      | :ok:  | :ok:      | :ok:    | NS4168    | :x:        | :x:       |
 | [M5Stack M5StickC PLUS2](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit)  | :ok:      | :ok:         | :ok:      | :ok:      | :ok:  | :ok:¹     | :x:     | Tone      | :x:        | :x:       |
 | [M5Stack M5StickC PLUS](https://shop.m5stack.com/products/m5stickc-plus-esp32-pico-mini-iot-development-kit)   | :ok:      | :ok:          | :ok:      | :ok:      | :ok:  | :ok:¹     | :x:     | Tone      | :x:        | :x:²     |
 | [M5Stack M5Core BASIC](https://shop.m5stack.com/products/basic-core-iot-development-kit)    | :ok:        | :ok:       | :ok:       | :ok:        | :ok:  | :ok:¹     | :x:     | Tone      | :x:        | :x:       |
@@ -224,11 +227,14 @@ Also, [read our FAQ](https://github.com/pr3y/Bruce/wiki/FAQ)
 | [Lilygo T-Display-S3](https://lilygo.cc/products/t-display-s3) | :ok:       | :ok:      | :x:       | :x:       | :x:   | :ok:      | :x:     | :x:       | :x:        | :x:       |
 | [Lilygo T&#x2011;Deck](https://lilygo.cc/products/t-deck) ([and pro](https://lilygo.cc/products/t-deck-plus-1)) | :ok:       | :x:      | :x:       | :x:       | :x:   | :ok:      | :x:     | :x:       | :x:        | :x:       |
 | [Lilygo T-Watch-S3](https://lilygo.cc/products/t-watch-s3) | :x:       | :x:      | :x:       | :x:       | :x:   | :ok:      | :x:     | :x:       | :x:        | :x:       |
+| [Lilygo T-LoRa Pager](https://lilygo.cc/products/t-lora-pager) | :x:       | :x:      | :x:       | :x:       | :x:   | :ok:      | :x:     | :x:       | :x:        | :x:       |
+| [Smoochiee V2](https://www.pcbway.com/project/shareproject/Bruce_PCB_Smoochiee_d6a0284b.html) | :ok:       | :ok:      | :x:       | :ok:       | :x:   | :ok:      | :x:     | :x:       | :x:        | :x:       |
+| [ESP32-C5](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html) | :ok:       | :ok:      | :x:       | :ok:       | :x:   | :x:      | :x:     | :x:       | :x:        | :x:       |
 
 ² CYD have a LITE_VERSION version for Launcher Compatibility
 ¹ Core, CYD and StickCs Bad-USB: [here](https://github.com/pr3y/Bruce/wiki/Others#badusb)
 
-*LITE_VERSION*: TelNet, SSH, DPWO, WireGuard, ScanHosts, RawSniffer, Brucegotchi, BLEBacon, BLEScan, Interpreter and OpenHaystack are NOT available for M5Launcher Compatibility
+*LITE_VERSION*: TelNet, SSH, WireGuard, ScanHosts, RawSniffer, Brucegotchi, BLEBacon, BLEScan and Interpreter are NOT available for M5Launcher Compatibility
 
 
 ## :sparkles: Why and how does it look?

@@ -15,13 +15,16 @@ public:
     String getName() const { return _name; }
 
     void draw(float scale = 1) {
-        if (rotation != bruceConfig.rotation) resetCoordinates();
+        if (rotation != bruceConfigPins.rotation) resetCoordinates();
         if (!getTheme()) {
+            if (bruceConfig.themePath != "") {
+                // Image is not available for active theme, clear larger area
+                tft.fillRect(0, 27, tftWidth, tftHeight - 27, bruceConfig.bgColor);
+            }
             drawIcon(scale);
             drawArrows(scale);
             drawTitle(scale);
         } else {
-            clearImgArea();
             if (bruceConfig.theme.label)
                 drawTitle(scale); // If using .GIF, labels are draw after complete, which takes some time
             drawIconImg();
@@ -141,7 +144,7 @@ protected:
         arrowAreaX = BORDER_PAD_X;
         arrowAreaW = iconAreaX - arrowAreaX;
 
-        rotation = bruceConfig.rotation;
+        rotation = bruceConfigPins.rotation;
     }
 };
 

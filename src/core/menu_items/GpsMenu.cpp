@@ -8,13 +8,13 @@
 
 void GpsMenu::optionsMenu() {
     options = {
-        {"Wardriving",  [=]() { Wardriving(); }},
-        {"GPS Tracker", [=]() { GPSTracker(); }},
-        {"Config",      [=]() { configMenu(); }},
+        {"Wardriving",  [=]() { Wardriving(); }   },
+        {"GPS Tracker", [=]() { GPSTracker(); }   },
+        {"Config",      [this]() { configMenu(); }},
     };
     addOptionToMainMenu();
 
-    String txt = "GPS (" + String(bruceConfig.gpsBaudrate) + " bps)";
+    String txt = "GPS (" + String(bruceConfigPins.gpsBaudrate) + " bps)";
     loopOptions(options, MENU_TYPE_SUBMENU, txt.c_str());
 }
 
@@ -22,7 +22,7 @@ void GpsMenu::configMenu() {
     options = {
         {"Baudrate", setGpsBaudrateMenu                                 },
         {"GPS Pins", [=]() { setUARTPinsMenu(bruceConfigPins.gps_bus); }},
-        {"Back",     [=]() { optionsMenu(); }                           },
+        {"Back",     [this]() { optionsMenu(); }                        },
     };
 
     loopOptions(options, MENU_TYPE_SUBMENU, "GPS Config");

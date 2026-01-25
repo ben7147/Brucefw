@@ -1,4 +1,5 @@
 #include "core/powerSave.h"
+#include "core/utils.h"
 #include <Adafruit_TCA8418.h>
 #include <Keyboard.h>
 #include <Wire.h>
@@ -80,13 +81,16 @@ inline void mapRawKeyToPhysical(uint8_t keyvalue, uint8_t &row, uint8_t &col) {
 void _setup_gpio() {
     //    Keyboard.begin();
     pinMode(0, INPUT);
-    pinMode(10, INPUT); // Pin that reads the Battery voltage
     pinMode(5, OUTPUT);
     // Set GPIO5 HIGH for SD card compatibility (thx for the tip @bmorcelli & 7h30th3r0n3)
     digitalWrite(5, HIGH);
 }
 bool kb_interrupt = false;
-void IRAM_ATTR gpio_isr_handler(void *arg) { kb_interrupt = true; }
+void IRAM_ATTR gpio_isr_handler(void *arg) {
+    kb_interrupt = true;
+    // static long i = 0;
+    // Serial.printf("interrupt %ld\n", i++);
+}
 void _post_setup_gpio() {
     // Initialize TCA8418 I2C keyboard controller
     Serial.println("DEBUG: Cardputer ADV - Initializing TCA8418 keyboard");
@@ -121,27 +125,13 @@ void _post_setup_gpio() {
     }
     bruceConfigPins.gps_bus.rx = (gpio_num_t)15;
     bruceConfigPins.gps_bus.tx = (gpio_num_t)13;
-    bruceConfig.gpsBaudrate = 115200;
+    bruceConfigPins.gpsBaudrate = 115200;
 
     tca.matrix(7, 8);
     tca.flush();
     pinMode(11, INPUT);
     attachInterruptArg(digitalPinToInterrupt(11), gpio_isr_handler, &kb_interrupt, CHANGE);
     tca.enableInterrupts();
-}
-/***************************************************************************************
-** Function name: getBattery()
-** location: display.cpp
-** Description:   Delivers the battery value from 1-100
-***************************************************************************************/
-int getBattery() {
-    uint8_t percent;
-    uint32_t volt = analogReadMilliVolts(GPIO_NUM_10);
-
-    float mv = volt;
-    percent = (mv - 3300) * 100 / (float)(4150 - 3350);
-
-    return (percent >= 100) ? 100 : percent;
 }
 
 /*********************************************************************
@@ -192,6 +182,12 @@ void InputHandler(void) {
 
     if (UseTCA8418) {
         if (!kb_interrupt) {
+            if (digitalRead(11) == LOW) {
+                detachInterrupt(digitalPinToInterrupt(11));
+                attachInterruptArg(digitalPinToInterrupt(11), gpio_isr_handler, &kb_interrupt, CHANGE);
+                Serial.println("Forcing keyboard interrupt, Restoring Interruptions.");
+                kb_interrupt = true;
+            }
             if (!LongPress) {
                 sel = false; // avoid multiple selections
                 esc = false; // avoid multiple escapes
@@ -216,7 +212,7 @@ void InputHandler(void) {
         int intstat = tca.readRegister(TCA8418_REG_INT_STAT);
         if ((intstat & 0x01) == 0) { kb_interrupt = false; }
 
-        if (tca.available() <= 0) return;
+        // if (tca.available() <= 0) return;
         int keyEvent = tca.getEvent();
         bool pressed = (keyEvent & 0x80); // Bit 7: 1 Pressed, 0 Released
         uint8_t value = keyEvent & 0x7F;  // Bits 0-6: key value
@@ -242,12 +238,12 @@ void InputHandler(void) {
 
         // Serial.printf("Key pressed: %c (0x%02X) at row=%d, col=%d\n", keyVal, keyVal, row, col);
 
-        if (keyVal == KEY_BACKSPACE) {
+        if (keyVal == KEY_BACKSPACE && col == 13) { // KEY_BACKSPACE = '*' = 0x2a
             del = pressed;
             esc = pressed;
         } else if (keyVal == '`') {
             esc = pressed;
-        } else if (keyVal == KEY_ENTER) {
+        } else if (keyVal == KEY_ENTER && col == 13) { // KEY_ENTER = '(' = 0x28
             sel = pressed;
         } else if (keyVal == ',' || keyVal == ';') {
             prev = pressed;
@@ -293,8 +289,7 @@ void InputHandler(void) {
         }
         if (fn_key_pressed) key.fn = true;
 
-        if (keyVal != 0xFF && keyVal != KEY_BACKSPACE && keyVal != KEY_OPT && keyVal != KEY_LEFT_ALT &&
-            keyVal != KEY_LEFT_CTRL && keyVal != KEY_LEFT_SHIFT) {
+        if (keyVal != 0xFF && !sel && !gui && !alt && !ctrl && !del && keyVal != KEY_LEFT_SHIFT) {
             if (fn_key_pressed && arrow_up) key.word.emplace_back(0xDA);
             else if (fn_key_pressed && arrow_dw) key.word.emplace_back(0xD9);
             else if (fn_key_pressed && arrow_ry) key.word.emplace_back(0xD7);
@@ -398,3 +393,64 @@ void powerOff() {}
 ** Btn logic to tornoff the device (name is odd btw)
 **********************************************************************/
 void checkReboot() {}
+
+/*********************************************************************
+** Function: _setup_codec_speaker
+** location: modules/others/audio.cpp
+** Handles audio CODEC to enable/disable speaker
+**********************************************************************/
+void _setup_codec_speaker(bool enable) {
+    if (!UseTCA8418) return;
+
+    static constexpr const uint8_t enabled_bulk_data[] = {
+        2, 0x00, 0x80, // 0x00 RESET/  CSM POWER ON
+        2, 0x01, 0xB5, // 0x01 CLOCK_MANAGER/ MCLK=BCLK
+        2, 0x02, 0x18, // 0x02 CLOCK_MANAGER/ MULT_PRE=3
+        2, 0x0D, 0x01, // 0x0D SYSTEM/ Power up analog circuitry
+        2, 0x12, 0x00, // 0x12 SYSTEM/ power-up DAC - NOT default
+        2, 0x13, 0x10, // 0x13 SYSTEM/ Enable output to HP drive - NOT default
+        2, 0x32, 0xBF, // 0x32 DAC/ DAC volume (0xBF == ±0 dB )
+        2, 0x37, 0x08, // 0x37 DAC/ Bypass DAC equalizer - NOT default
+        0
+    };
+    static constexpr const uint8_t disabled_bulk_data[] = {0};
+
+    i2c_bulk_write(&Wire1, ES8311_ADDR, enable ? enabled_bulk_data : disabled_bulk_data);
+}
+
+/*********************************************************************
+** Function: _setup_codec_mic
+** location: modules/others/mic.cpp
+** Handles audio CODEC to enable/disable microphone
+**********************************************************************/
+void _setup_codec_mic(bool enable) {
+    if (!UseTCA8418) return;
+    // Set microfone pin for ADV
+    mic_bclk_pin = (gpio_num_t)41;
+
+    static constexpr const uint8_t enabled_bulk_data[] = {
+        2, 0x00, 0x80, // 0x00 RESET/  CSM POWER ON
+        2, 0x01, 0xBA, // 0x01 CLOCK_MANAGER/ MCLK=BCLK
+        2, 0x02, 0x18, // 0x02 CLOCK_MANAGER/ MULT_PRE=3
+        2, 0x0D, 0x01, // 0x0D SYSTEM/ Power up analog circuitry
+        2, 0x0E, 0x02, // 0x0E SYSTEM/ : Enable analog PGA, enable ADC modulator
+        2, 0x14, 0x10, // ES8311_ADC_REG14 : select Mic1p-Mic1n / PGA GAIN (minimum)
+        2, 0x17, 0xBF, // ES8311_ADC_REG17 : ADC_VOLUME 0xBF == ± 0 dB
+        2, 0x1C, 0x6A, // ES8311_ADC_REG1C : ADC Equalizer bypass, cancel DC offset in digital domain
+        0
+    };
+    static constexpr const uint8_t disabled_bulk_data[] = {
+        2,
+        0x0D,
+        0xFC, // 0x0D SYSTEM/ Power down analog circuitry
+        2,
+        0x0E,
+        0x6A, // 0x0E SYSTEM
+        2,
+        0x00,
+        0x00, // 0x00 RESET/  CSM POWER DOWN
+        0
+    };
+
+    i2c_bulk_write(&Wire1, ES8311_ADDR, enable ? enabled_bulk_data : disabled_bulk_data);
+}

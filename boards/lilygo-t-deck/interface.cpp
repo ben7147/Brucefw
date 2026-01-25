@@ -1,14 +1,8 @@
+#include "TouchDrvGT911.hpp"
 #include "core/powerSave.h"
+#include "core/utils.h"
 #include <Wire.h>
 #include <interface.h>
-
-#include "core/utils.h"
-#include <driver/adc.h>
-#include <esp_adc_cal.h>
-#include <soc/adc_channel.h>
-#include <soc/soc_caps.h>
-
-#include "TouchDrvGT911.hpp"
 TouchDrvGT911 touch;
 
 struct TouchPointPro {
@@ -101,39 +95,10 @@ void _setup_gpio() {
     attachInterrupt(R_BTN, ISR_right, FALLING);
 
 #ifdef T_DECK_PLUS
-    bruceConfig.gpsBaudrate = 38400;
+    bruceConfigPins.gpsBaudrate = 38400;
 #endif
 }
 
-/***************************************************************************************
-** Function name: getBattery()
-** location: display.cpp
-** Description:   Delivers the battery value from 1-100
-***************************************************************************************/
-int getBattery() {
-    int percent = 0;
-    uint8_t _batAdcCh = ADC1_GPIO4_CHANNEL;
-    uint8_t _batAdcUnit = 1;
-    static uint32_t lastVolt = 5000;
-    static unsigned long lastTime = 0;
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten((adc1_channel_t)_batAdcCh, ADC_ATTEN_DB_12);
-    static esp_adc_cal_characteristics_t *adc_chars = nullptr;
-    static constexpr int BASE_VOLATAGE = 3600;
-    adc_chars = (esp_adc_cal_characteristics_t *)calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_characterize(
-        (adc_unit_t)_batAdcUnit, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, BASE_VOLATAGE, adc_chars
-    );
-    int raw;
-    raw = adc1_get_raw((adc1_channel_t)_batAdcCh);
-    uint32_t volt = esp_adc_cal_raw_to_voltage(raw, adc_chars);
-
-    float mv = volt * 2;
-    percent = (mv - 3300) * 100 / (float)(4150 - 3350);
-
-    return (percent < 0) ? 0 : (percent >= 100) ? 100 : percent;
-}
-bool isCharging() { return false; }
 /***************************************************************************************
 ** Function name: _post_setup_gpio()
 ** Location: main.cpp
@@ -145,9 +110,8 @@ void _post_setup_gpio() {
 #define TFT_BRIGHT_FREQ 5000
     // Brightness control must be initialized after tft in this case @Pirata
     pinMode(TFT_BL, OUTPUT);
-    ledcSetup(TFT_BRIGHT_CHANNEL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits); // Channel 0, 10khz, 8bits
-    ledcAttachPin(TFT_BL, TFT_BRIGHT_CHANNEL);
-    ledcWrite(TFT_BRIGHT_CHANNEL, 255);
+    ledcAttach(TFT_BL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits);
+    ledcWrite(TFT_BL, 255);
 }
 /*********************************************************************
 ** Function: setBrightness
@@ -163,8 +127,8 @@ void _setBrightness(uint8_t brightval) {
     else if (brightval == 0) dutyCycle = 0;
     else dutyCycle = ((brightval * 255) / 100);
 
-    log_i("dutyCycle for bright 0-255: %d", dutyCycle);
-    ledcWrite(TFT_BRIGHT_CHANNEL, dutyCycle); // Channel 0
+    // log_i("dutyCycle for bright 0-255: %d", dutyCycle);
+    ledcWrite(TFT_BL, dutyCycle);
 }
 /*********************************************************************
 ** Function: InputHandler
@@ -176,28 +140,34 @@ void InputHandler(void) {
     TouchPointPro t;
     uint8_t touched = 0;
     uint8_t rot = 5;
-    if (rot != bruceConfig.rotation) {
-        if (bruceConfig.rotation == 1) {
+
+#ifdef NORMAL_T_DECK
+    bool isPlus = false;
+#else
+    bool isPlus = true;
+#endif
+    if (rot != bruceConfigPins.rotation) {
+        if (bruceConfigPins.rotation == 1) {
             touch.setMaxCoordinates(320, 240);
             touch.setSwapXY(true);
-            touch.setMirrorXY(true, true);
+            touch.setMirrorXY(!isPlus, true);
         }
-        if (bruceConfig.rotation == 3) {
+        if (bruceConfigPins.rotation == 3) {
             touch.setMaxCoordinates(320, 240);
             touch.setSwapXY(true);
-            touch.setMirrorXY(false, false);
+            touch.setMirrorXY(isPlus, false);
         }
-        if (bruceConfig.rotation == 0) {
+        if (bruceConfigPins.rotation == 0) {
             touch.setMaxCoordinates(240, 320);
             touch.setSwapXY(false);
-            touch.setMirrorXY(false, true);
+            touch.setMirrorXY(false, !isPlus);
         }
-        if (bruceConfig.rotation == 2) {
+        if (bruceConfigPins.rotation == 2) {
             touch.setMaxCoordinates(240, 320);
             touch.setSwapXY(false);
-            touch.setMirrorXY(true, false);
+            touch.setMirrorXY(true, isPlus);
         }
-        rot = bruceConfig.rotation;
+        rot = bruceConfigPins.rotation;
     }
     touched = touch.getPoint(&t.x, &t.y);
     delay(1);
@@ -266,7 +236,7 @@ void InputHandler(void) {
     if ((millis() - tm) > 190 || LongPress) { // one reading each 190ms
         if (touched) {
 
-            // Serial.printf("\nPressed x=%d , y=%d, rot: %d", t.x, t.y, bruceConfig.rotation);
+            // Serial.printf("\nPressed x=%d , y=%d, rot: %d", t.x, t.y, bruceConfigPins.rotation);
             tm = millis();
 
             if (!wakeUpScreen()) AnyKeyPress = true;

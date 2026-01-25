@@ -98,7 +98,7 @@ EspConnection::Message EspConnection::createPongMessage() {
 
 void EspConnection::sendPing() {
     peerOptions = {
-        {"Broadcast", [=]() { setDstAddress(broadcastAddress); }},
+        {"Broadcast", [this]() { setDstAddress(broadcastAddress); }},
     };
 
     Message message = createPingMessage();
@@ -174,7 +174,7 @@ String EspConnection::macToString(const uint8_t *mac) {
 }
 
 void EspConnection::appendPeerToList(const uint8_t *mac) {
-    peerOptions.push_back({macToString(mac).c_str(), [=]() { setDstAddress(mac); }});
+    peerOptions.push_back({macToString(mac).c_str(), [this, mac]() { setDstAddress(mac); }});
 }
 
 void EspConnection::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -202,52 +202,10 @@ void EspConnection::onDataRecv(const uint8_t *mac, const uint8_t *incomingData, 
     recvQueue.push_back(recvMessage);
 }
 
-// void EspConnection::sendTypedMessage() {
-//     String inputMsg = keyboard("", 76, "Message:");
-//     if (inputMsg.length() == 0) {
-//         Serial.println("No message entered.");
-//         return;
-//     }
+void EspConnection::onDataSentStatic(const wifi_tx_info_t *info, esp_now_send_status_t status) {
+    if (instance) instance->onDataSent(info->src_addr, status);
+}
 
-//     Message message = createMessage(inputMsg);
-//     esp_err_t result = esp_now_send(dstAddress, (uint8_t *)&message, sizeof(message));
-//     if (result == ESP_OK) {
-//         Serial.println("Message sent successfully.");
-//     } else {
-//         Serial.printf("Error sending message: %s\n", esp_err_to_name(result));
-//     }
-// }
-
-// void EspConnection::receiveTypedMessage() {
-//     while (!recvQueue.empty()) {
-//         Message msg = recvQueue.front();
-//         recvQueue.erase(recvQueue.begin());
-
-//         Serial.println("[ESP] Received typed message:");
-//         printMessage(msg);
-
-//         if (msg.ping) {
-//             Serial.println("[ESP] Ping received. Sending pong...");
-//             sendPong(dstAddress);
-//             continue;
-//         }
-
-//         if (msg.pong) {
-//             Serial.println("[ESP] Pong received.");
-//             continue;
-//         }
-
-//         if (msg.isFile) {
-//             Serial.printf("[ESP] Receiving file chunk for '%s' (%zu/%zu bytes)\n",
-//                           msg.filename, msg.bytesSent, msg.totalBytes);
-//             // TODO: append data to file storage
-//         } else {
-//             Serial.printf("[ESP] Received text: %s\n", msg.data);
-//             // TODO: handle text data (e.g., print, parse, etc.)
-//         }
-
-//         if (msg.done) {
-//             Serial.println("[ESP] Transmission complete.");
-//         }
-//     }
-// }
+void EspConnection::onDataRecvStatic(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
+    if (instance) instance->onDataRecv(info->src_addr, incomingData, len);
+}

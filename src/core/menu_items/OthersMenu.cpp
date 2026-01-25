@@ -7,7 +7,6 @@
 #include "modules/others/cricket.h"
 #include "modules/others/ibutton.h"
 #include "modules/others/mic.h"
-#include "modules/others/openhaystack.h"
 #include "modules/others/qrcode_menu.h"
 #include "modules/others/random.h"
 #include "modules/others/timer.h"
@@ -21,19 +20,20 @@ void OthersMenu::optionsMenu() {
         {"True/False",   [=]() { Randomizer(); }                  },
         {"QRCodes",      qrcode_menu                              },
         {"Megalodon",    shark_setup                              },
-#ifdef MIC_SPM1423
+#if defined(MIC_SPM1423) || defined(MIC_INMP441)
         {"Mic Spectrum", mic_test                                 },
 #endif
+#ifndef LITE_VERSION
         {"BadUSB",       [=]() { ducky_setup(hid_usb, false); }   },
         {"USB Keyboard", [=]() { ducky_keyboard(hid_usb, false); }},
+#endif
 #ifdef USB_as_HID
         {"Clicker",      clicker_setup                            },
 #endif
 #ifndef LITE_VERSION
-        {"Openhaystack", openhaystack_setup                       },
-        {"Interpreter",  run_bjs_script                           },
-#endif
         {"iButton",      setup_ibutton                            },
+#endif
+        {"Timer",        [=]() { Timer(); }                       },
     };
     addOptionToMainMenu();
 

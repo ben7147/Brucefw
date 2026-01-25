@@ -32,7 +32,7 @@ Button *btn1;
 Button *btn2;
 
 #if defined(T_DISPLAY_S3)
-#include <esp_adc_cal.h>
+
 #endif
 
 /***************************************************************************************
@@ -41,11 +41,11 @@ Button *btn2;
 ***************************************************************************************/
 void _setup_gpio() {
 
-#ifdef HAS_TOUCH
 #ifdef USE_SD_MMC
     SD.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0);
 #endif
 
+#ifdef HAS_TOUCH
     gpio_hold_dis((gpio_num_t)21); // PIN_TOUCH_RES
     pinMode(15, OUTPUT);
     digitalWrite(15, HIGH); // PIN_POWER_ON
@@ -97,38 +97,14 @@ void _setup_gpio() {
     pinMode(PIN_POWER_ON, OUTPUT);
     digitalWrite(PIN_POWER_ON, HIGH);
 
-    // setup Battery pin for reading voltage value
-    pinMode(BAT_PIN, INPUT);
-
     // Start with default IR, RF and RFID Configs, replace old
-    bruceConfig.rfModule = CC1101_SPI_MODULE;
-    bruceConfig.rfidModule = PN532_I2C_MODULE;
+    bruceConfigPins.rfModule = CC1101_SPI_MODULE;
+    bruceConfigPins.rfidModule = PN532_I2C_MODULE;
 
-    bruceConfig.irRx = RXLED;
-    bruceConfig.irTx = LED;
+    bruceConfigPins.irRx = RXLED;
+    bruceConfigPins.irTx = TXLED;
 
     Serial.begin(115200);
-}
-
-/***************************************************************************************
-** Function name: getBattery()
-** Description:   Delivers the battery value from 1-100
-***************************************************************************************/
-int getBattery() {
-    int percent = 0;
-    esp_adc_cal_characteristics_t adc_chars;
-    esp_adc_cal_value_t val_type =
-        esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
-    uint32_t raw = analogRead(BAT_PIN);
-    uint32_t v1 = esp_adc_cal_raw_to_voltage(raw, &adc_chars) * 2;
-
-    if (v1 > 4150) {
-        percent = 0;
-    } else {
-        percent = map(v1, 3200, 4150, 0, 100);
-    }
-
-    return (percent < 0) ? 0 : (percent >= 100) ? 100 : percent;
 }
 
 /*********************************************************************
@@ -152,7 +128,7 @@ void _setBrightness(uint8_t brightval) {
 void InputHandler(void) {
     static long tm = 0;
     static bool btn_pressed = false;
-    bool selPressed=false;
+    bool selPressed = false;
     if (nxtPress || prvPress || ecPress || slPress || selPressed) btn_pressed = true;
 
     if (millis() - tm > 200 || LongPress) {
@@ -160,28 +136,28 @@ void InputHandler(void) {
         if (touch.read()) {
             auto t = touch.getPoint(0);
             tm = millis();
-            if (bruceConfig.rotation == 1) {
+            if (bruceConfigPins.rotation == 1) {
                 t.y = (tftHeight + 20) - t.y;
                 // t.x = tftWidth-t.x;
             }
-            if (bruceConfig.rotation == 3) {
+            if (bruceConfigPins.rotation == 3) {
                 // t.y = (tftHeight+20)-t.y;
                 t.x = tftWidth - t.x;
             }
             // Need to test the other orientations
 
-            if (bruceConfig.rotation == 0) {
+            if (bruceConfigPins.rotation == 0) {
                 int tmp = t.x;
                 t.x = tftWidth - t.y;
                 t.y = tmp;
             }
-            if (bruceConfig.rotation == 2) {
+            if (bruceConfigPins.rotation == 2) {
                 int tmp = t.x;
                 t.x = t.y;
                 t.y = (tftHeight + 20) - tmp;
             }
 
-            // Serial.printf("\nPressed x=%d , y=%d, rot: %d",t.x, t.y, bruceConfig.rotation);
+            // Serial.printf("\nPressed x=%d , y=%d, rot: %d",t.x, t.y, bruceConfigPins.rotation);
 
             if (!wakeUpScreen()) AnyKeyPress = true;
             else return;
@@ -193,7 +169,10 @@ void InputHandler(void) {
             touchHeatMap(touchPoint);
         }
 #endif
-        if(digitalRead(SEL_BTN) == BTN_ACT) { selPressed=true; btn_pressed=true; }
+        if (digitalRead(SEL_BTN) == BTN_ACT) {
+            selPressed = true;
+            btn_pressed = true;
+        }
         if (btn_pressed) {
             btn_pressed = false;
             if (!wakeUpScreen()) AnyKeyPress = true;

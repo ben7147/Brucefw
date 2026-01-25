@@ -10,8 +10,6 @@ static PowersSY6970 PMU;
 #include <Wire.h>
 #define LCD_MODULE_CMD_1
 
-#include <esp_adc_cal.h>
-
 #define BOARD_I2C_SDA 5
 #define BOARD_I2C_SCL 6
 #define BOARD_SENSOR_IRQ 21
@@ -79,9 +77,8 @@ void _setup_gpio() {
 ***************************************************************************************/
 void _post_setup_gpio() {
     // PWM backlight setup
-    ledcSetup(TFT_BRIGHT_CHANNEL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits); // Channel 0, 10khz, 8bits
-    ledcAttachPin(TFT_BL, TFT_BRIGHT_CHANNEL);
-    ledcWrite(TFT_BRIGHT_CHANNEL, 255);
+    ledcAttach(TFT_BL, TFT_BRIGHT_FREQ, TFT_BRIGHT_Bits);
+    ledcWrite(TFT_BL, 255);
 }
 
 /***************************************************************************************
@@ -93,7 +90,7 @@ int getBattery() {
     int percent = 0;
     percent = (PMU.getSystemVoltage() - 3300) * 100 / (float)(4150 - 3350);
 
-    return (percent < 0) ? 0 : (percent >= 100) ? 100 : percent;
+    return (percent < 0) ? 1 : (percent >= 100) ? 100 : percent;
 }
 
 /*********************************************************************
@@ -111,7 +108,7 @@ void _setBrightness(uint8_t brightval) {
     else dutyCycle = ((brightval * 255) / 100);
 
     Serial.printf("dutyCycle for bright 0-255: %d", dutyCycle);
-    ledcWrite(TFT_BRIGHT_CHANNEL, dutyCycle); // Channel 0
+    ledcWrite(TFT_BL, dutyCycle);
 }
 
 struct TouchPointPro {
@@ -142,21 +139,21 @@ void InputHandler(void) {
         }
         if (touched && touch.isPressed()) {
             tm = millis();
-            if (bruceConfig.rotation == 1) { t.y[0] = TFT_WIDTH - t.y[0]; }
-            if (bruceConfig.rotation == 3) { t.x[0] = TFT_HEIGHT - t.x[0]; }
+            if (bruceConfigPins.rotation == 1) { t.y[0] = TFT_WIDTH - t.y[0]; }
+            if (bruceConfigPins.rotation == 3) { t.x[0] = TFT_HEIGHT - t.x[0]; }
             // Need to test these 2
-            if (bruceConfig.rotation == 0) {
+            if (bruceConfigPins.rotation == 0) {
                 int tmp = t.x[0];
                 t.x[0] = t.y[0];
                 t.y[0] = tmp;
             }
-            if (bruceConfig.rotation == 2) {
+            if (bruceConfigPins.rotation == 2) {
                 int tmp = t.x[0];
                 t.x[0] = TFT_WIDTH - t.y[0];
                 t.y[0] = TFT_HEIGHT - tmp;
             }
 
-            // Serial.printf("\nPressed x=%d , y=%d, rot: %d", t.x[0], t.y[0], bruceConfig.rotation);
+            // Serial.printf("\nPressed x=%d , y=%d, rot: %d", t.x[0], t.y[0], bruceConfigPins.rotation);
 
             if (!wakeUpScreen()) AnyKeyPress = true;
             else return;

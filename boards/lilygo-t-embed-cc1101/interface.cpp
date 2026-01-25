@@ -3,10 +3,11 @@
 #include <globals.h>
 #include <interface.h>
 
+// Rotary encoder
 #include <RotaryEncoder.h>
-// extern RotaryEncoder encoder;
 extern RotaryEncoder *encoder;
-IRAM_ATTR void checkPosition();
+RotaryEncoder *encoder = nullptr;
+IRAM_ATTR void checkPosition() { encoder->tick(); }
 
 // Battery libs
 #if defined(T_EMBED_1101)
@@ -18,10 +19,7 @@ IRAM_ATTR void checkPosition();
 #include <esp32-hal-dac.h>
 XPowersPPM PPM;
 #elif defined(T_EMBED)
-#include <driver/adc.h>
-#include <esp_adc_cal.h>
-#include <soc/adc_channel.h>
-#include <soc/soc_caps.h>
+
 #endif
 
 #ifdef USE_BQ27220_VIA_I2C
@@ -55,6 +53,11 @@ void _setup_gpio() {
     digitalWrite(TFT_CS, HIGH);
     pinMode(SDCARD_CS, OUTPUT);
     digitalWrite(SDCARD_CS, HIGH);
+    pinMode(NRF24_SS_PIN, OUTPUT); // NRF24 on Plus
+    digitalWrite(NRF24_SS_PIN, HIGH);
+
+    pinMode(NRF24_CE_PIN, OUTPUT); // put nRF24 in standby
+    digitalWrite(NRF24_CE_PIN, LOW);
 
     // Power chip pin
     pinMode(PIN_POWER_ON, OUTPUT);
@@ -65,24 +68,24 @@ void _setup_gpio() {
     if (pmu_ret) {
         PPM.setSysPowerDownVoltage(3300);
         PPM.setInputCurrentLimit(3250);
-        Serial.printf("getInputCurrentLimit: %d mA\n", PPM.getInputCurrentLimit());
+        Serial.printf("getInputCurrentLimit: %d mA\n", (int)PPM.getInputCurrentLimit());
         PPM.disableCurrentLimitPin();
         PPM.setChargeTargetVoltage(4208);
         PPM.setPrechargeCurr(64);
         PPM.setChargerConstantCurr(832);
         PPM.getChargerConstantCurr();
-        Serial.printf("getChargerConstantCurr: %d mA\n", PPM.getChargerConstantCurr());
+        Serial.printf("getChargerConstantCurr: %d mA\n", (int)PPM.getChargerConstantCurr());
         PPM.enableMeasure(PowersBQ25896::CONTINUOUS);
         PPM.disableOTG();
         PPM.enableCharge();
     }
     if (bq.getDesignCap() != BATTERY_DESIGN_CAPACITY) { bq.setDesignCap(BATTERY_DESIGN_CAPACITY); }
     // Start with default IR, RF and RFID Configs, replace old
-    bruceConfig.rfModule = CC1101_SPI_MODULE;
-    bruceConfig.rfidModule = PN532_I2C_MODULE;
-    bruceConfig.irRx = 1;
+    bruceConfigPins.rfModule = CC1101_SPI_MODULE;
+    bruceConfigPins.rfidModule = PN532_I2C_MODULE;
+    bruceConfigPins.irRx = 1;
+    bruceConfigPins.irTx = 2;
 #else
-    pinMode(BAT_PIN, INPUT); // Battery value
     Wire.begin(GROVE_SDA, GROVE_SCL);
     Wire.beginTransmission(0x40);
     if (Wire.endTransmission() == 0) {
@@ -92,13 +95,13 @@ void _setup_gpio() {
         Serial.println("Probably CC1101 exists");
         bruceConfigPins.CC1101_bus.cs = GPIO_NUM_17;
         bruceConfigPins.CC1101_bus.io0 = GPIO_NUM_18;
-        bruceConfig.rfModule = CC1101_SPI_MODULE;
+        bruceConfigPins.rfModule = CC1101_SPI_MODULE;
 
         //* If it does not exist, then the CC1101 shield may exist, so there is no need for Wire to exist.
         Wire.endTransmission();
         Wire.end();
     }
-    bruceConfig.rfidModule = PN532_SPI_MODULE;
+    bruceConfigPins.rfidModule = PN532_SPI_MODULE;
 
 #endif
 
@@ -106,10 +109,7 @@ void _setup_gpio() {
     pinMode(BK_BTN, INPUT);
 #endif
     pinMode(ENCODER_KEY, INPUT);
-    // use TWO03 mode when PIN_IN1, PIN_IN2 signals are both LOW or HIGH in latch position.
     encoder = new RotaryEncoder(ENCODER_INA, ENCODER_INB, RotaryEncoder::LatchMode::TWO03);
-
-    // register interrupt routine
     attachInterrupt(digitalPinToInterrupt(ENCODER_INA), checkPosition, CHANGE);
     attachInterrupt(digitalPinToInterrupt(ENCODER_INB), checkPosition, CHANGE);
 }
@@ -118,31 +118,13 @@ void _setup_gpio() {
 ** Function name: getBattery()
 ** Description:   Delivers the battery value from 1-100
 ***************************************************************************************/
+#if defined(USE_BQ27220_VIA_I2C)
 int getBattery() {
     int percent = 0;
-#if defined(USE_BQ27220_VIA_I2C)
     percent = bq.getChargePcnt();
-#elif defined(T_EMBED)
-    uint8_t _batAdcCh = ADC1_GPIO4_CHANNEL;
-    uint8_t _batAdcUnit = 1;
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten((adc1_channel_t)_batAdcCh, ADC_ATTEN_DB_12);
-    static esp_adc_cal_characteristics_t *adc_chars = nullptr;
-    static constexpr int BASE_VOLATAGE = 3600;
-    adc_chars = (esp_adc_cal_characteristics_t *)calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_characterize(
-        (adc_unit_t)_batAdcUnit, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, BASE_VOLATAGE, adc_chars
-    );
-    int raw;
-    raw = adc1_get_raw((adc1_channel_t)_batAdcCh);
-    uint32_t volt = esp_adc_cal_raw_to_voltage(raw, adc_chars);
-
-    float mv = volt * 2;
-    percent = (mv - 3300) * 100 / (float)(4150 - 3350);
-#endif
-
-    return (percent < 0) ? 0 : (percent >= 100) ? 100 : percent;
+    return (percent < 0) ? 1 : (percent >= 100) ? 100 : percent;
 }
+#endif
 /*********************************************************************
 **  Function: setBrightness
 **  set brightness value
@@ -158,12 +140,6 @@ void _setBrightness(uint8_t brightval) {
     }
 }
 
-// RotaryEncoder encoder(ENCODER_INA, ENCODER_INB, RotaryEncoder::LatchMode::TWO03);
-RotaryEncoder *encoder = nullptr;
-IRAM_ATTR void checkPosition() {
-    encoder->tick(); // just call tick() to check the state.
-}
-
 /*********************************************************************
 ** Function: InputHandler
 ** Handles the variables PrevPress, NextPress, SelPress, AnyKeyPress and EscPress
@@ -171,10 +147,16 @@ IRAM_ATTR void checkPosition() {
 void InputHandler(void) {
     static unsigned long tm = millis();  // debauce for buttons
     static unsigned long tm2 = millis(); // delay between Select and encoder (avoid missclick)
-    static int _last_dir = 0;
+    static int posDifference = 0;
+    static int lastPos = 0;
     bool sel = !BTN_ACT;
     bool esc = !BTN_ACT;
-    _last_dir = (int)encoder->getDirection();
+
+    int newPos = encoder->getPosition();
+    if (newPos != lastPos) {
+        posDifference += (newPos - lastPos);
+        lastPos = newPos;
+    }
 
     if (millis() - tm > 200 || LongPress) {
         sel = digitalRead(SEL_BTN);
@@ -182,21 +164,21 @@ void InputHandler(void) {
         esc = digitalRead(BK_BTN);
 #endif
     }
-    if (_last_dir != 0 || sel == BTN_ACT || esc == BTN_ACT) {
+    if (posDifference != 0 || sel == BTN_ACT || esc == BTN_ACT) {
         if (!wakeUpScreen()) AnyKeyPress = true;
         else return;
     }
-    if (_last_dir > 0) {
-        _last_dir = 0;
+    if (posDifference > 0) {
         PrevPress = true;
+        posDifference--;
 #ifdef HAS_ENCODER_LED
         EncoderLedChange = -1;
 #endif
         tm2 = millis();
     }
-    if (_last_dir < 0) {
-        _last_dir = 0;
+    if (posDifference < 0) {
         NextPress = true;
+        posDifference++;
 #ifdef HAS_ENCODER_LED
         EncoderLedChange = 1;
 #endif
@@ -204,7 +186,7 @@ void InputHandler(void) {
     }
 
     if (sel == BTN_ACT && millis() - tm2 > 200) {
-        _last_dir = 0;
+        posDifference = 0;
         SelPress = true;
         tm = millis();
     }
@@ -236,7 +218,7 @@ void powerDownNFC() {
 }
 
 void powerDownCC1101() {
-    if (!initRfModule("rx", bruceConfig.rfFreq)) { Serial.println("Can't init CC1101"); }
+    if (!initRfModule("rx", bruceConfigPins.rfFreq)) { Serial.println("Can't init CC1101"); }
 
     ELECHOUSE_cc1101.goSleep();
 }

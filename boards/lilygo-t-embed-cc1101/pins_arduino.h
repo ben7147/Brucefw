@@ -109,6 +109,12 @@ static const uint8_t RX = SERIAL_RX;
 // Fuel Gauge
 #define USE_BQ27220_VIA_I2C
 #define BQ27220_I2C_ADDRESS 0x55
+#ifdef BQ27220_I2C_SDA
+#undef BQ27220_I2C_SDA
+#endif
+#ifdef BQ27220_I2C_SCL
+#undef BQ27220_I2C_SCL
+#endif
 #define BQ27220_I2C_SDA GROVE_SDA
 #define BQ27220_I2C_SCL GROVE_SCL
 
@@ -126,7 +132,7 @@ static const uint8_t RX = SERIAL_RX;
 #define BTN_ACT LOW
 
 // IR
-#define LED 2
+#define TXLED 2
 #define RXLED 1
 #define LED_ON HIGH
 #define LED_OFF LOW
@@ -264,7 +270,7 @@ static const uint8_t SCL = GROVE_SCL;
 #define SERIAL_TX 43
 #define SERIAL_RX 44
 
-#define BAT_PIN 4
+#define ANALOG_BAT_PIN 4
 
 // Encoder
 #define HAS_ENCODER
@@ -279,7 +285,7 @@ static const uint8_t SCL = GROVE_SCL;
 #define BTN_ACT LOW
 
 // IR
-#define LED 44
+#define TXLED 44
 #define RXLED 43
 #define LED_ON HIGH
 #define LED_OFF LOW

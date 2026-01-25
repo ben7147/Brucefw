@@ -29,6 +29,33 @@ void addOptionToMainMenu() {
     options.push_back({"Main Menu", backToMenu});
 }
 
+/***************************************************************************************
+** Function name: getBattery()
+** Description:   Returns the battery value from 1-100
+***************************************************************************************/
+int getBattery() {
+#ifdef ANALOG_BAT_PIN
+#ifndef ANALOG_BAT_MULTIPLIER
+#define ANALOG_BAT_MULTIPLIER 2.0f
+#endif
+    static bool adcInitialized = false;
+    if (!adcInitialized) {
+        pinMode(ANALOG_BAT_PIN, INPUT);
+        adcInitialized = true;
+    }
+    uint32_t adcReading = analogReadMilliVolts(ANALOG_BAT_PIN);
+    float actualVoltage = (float)adcReading * ANALOG_BAT_MULTIPLIER;
+    const float MIN_VOLTAGE = 3300.0f;
+    const float MAX_VOLTAGE = 4150.0f;
+    float percent = ((actualVoltage - MIN_VOLTAGE) / (MAX_VOLTAGE - (MIN_VOLTAGE + 50.0f))) * 100.0f;
+
+    if (percent < 0) percent = 1;
+    if (percent > 100) percent = 100;
+    return (int)percent;
+#endif
+    return 0;
+}
+
 void updateClockTimezone() {
     timeClient.begin();
     timeClient.update();
@@ -79,12 +106,12 @@ void showDeviceInfo() {
     area.addLine("GROVE_SDA: " + String(bruceConfigPins.i2c_bus.sda));
     area.addLine("GROVE_SCL: " + String(bruceConfigPins.i2c_bus.scl));
     area.addLine("SERIAL TX: " + String(bruceConfigPins.uart_bus.tx));
-    area.addLine("SERIAL RX: " + String(bruceConfigPins.uart_bus.tx));
+    area.addLine("SERIAL RX: " + String(bruceConfigPins.uart_bus.rx));
     area.addLine("SPI_SCK_PIN: " + String(SPI_SCK_PIN));
     area.addLine("SPI_MOSI_PIN: " + String(SPI_MOSI_PIN));
     area.addLine("SPI_MISO_PIN: " + String(SPI_MISO_PIN));
     area.addLine("SPI_SS_PIN: " + String(SPI_SS_PIN));
-    area.addLine("IR TX: " + String(LED));
+    area.addLine("IR TX: " + String(TXLED));
     area.addLine("IR RX: " + String(RXLED));
     area.addLine("");
 
@@ -101,8 +128,8 @@ void showDeviceInfo() {
     );
     area.addLine("Charging Current: " + String(bq.getCurr(CURR_MODE::CURR_CHARGING)) + "mA");
     area.addLine(
-        "Time to Empty: " + String((bq.getTimeToEmpty() / 1440)) + " days, " +
-        String(((bq.getTimeToEmpty() % 1440) / 60)) + " hrs," + String(((bq.getTimeToEmpty() % 1440) % 60)) +
+        "Time to Empty: " + String((bq.getTimeToEmpty() / 1440)) + " days " +
+        String(((bq.getTimeToEmpty() % 1440) / 60)) + " hrs " + String(((bq.getTimeToEmpty() % 1440) % 60)) +
         " mins"
     );
     area.addLine("Avg Power Use: " + String(bq.getAvgPower()) + "mW");
@@ -168,4 +195,28 @@ String getOptionsJSON() {
     }
     response += "], \"active\":" + String(sel) + "}";
     return response;
+}
+
+/*********************************************************************
+** Function: i2c_bulk_write
+** Sends múltiple registers via I2C using a compact table.
+   bulk_data example..
+   const uint8_t bulk_data[] = {
+      2, 0x00, 0x00,       // <- datalen = 2, reg = 0x00, data = 0x00
+      3, 0x01, 0x00, 0x02, // <- datalen = 3, reg = 0x01, data = 0x00, 0x02
+      0 };                 // <- datalen 0 is end of data.
+**********************************************************************/
+void i2c_bulk_write(TwoWire *wire, uint8_t addr, const uint8_t *bulk_data) {
+    const uint8_t *p = bulk_data;
+    while (true) {
+        uint8_t datalen = *p++;
+        if (datalen == 0) { break; } // --- end of table ---
+        uint8_t reg = *p++;
+        wire->beginTransmission(addr);
+        wire->write(reg);
+        for (uint8_t i = 0; i < datalen - 1; i++) { wire->write(*p++); }
+        uint8_t error = wire->endTransmission();
+        if (error != 0) { log_e("I2C Write error %d", error); }
+        delay(1);
+    }
 }

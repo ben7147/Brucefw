@@ -6,6 +6,7 @@
 #include "utils.h"
 #include <JPEGDecoder.h>
 #include <interface.h> //for charging ischarging to print charging indicator
+#include <memory>
 
 #define MAX_MENU_SIZE (int)(tftHeight / 25)
 
@@ -20,6 +21,8 @@ void panelSleep(bool on) {
         delay(120);
     }
 #endif
+    // Disables tft writings on the display
+    tft.setSleepMode(on);
 }
 
 bool __attribute__((weak)) isCharging() { return false; }
@@ -451,6 +454,7 @@ int loopOptions(
     bool redraw = true;
     bool exit = false;
     int menuSize = options.size();
+    int devModeCounter = 0;
     static unsigned long _clock_bat_timer = millis();
     if (options.size() > MAX_MENU_SIZE) { menuSize = MAX_MENU_SIZE; }
     if (index > 0)
@@ -470,6 +474,10 @@ int loopOptions(
         if (exit) break;
         if (menuType == MENU_TYPE_MAIN) {
             checkReboot();
+            if (devModeCounter >= 5 && !bruceConfig.devMode) {
+                bruceConfig.setDevMode(true);
+                displayInfo("Dev Mode Enabled", true);
+            }
             if (millis() - _clock_bat_timer > 30000) {
                 _clock_bat_timer = millis();
                 drawStatusBar(); // update clock and battery status each 30s
@@ -514,6 +522,7 @@ int loopOptions(
         }
 
         if (PrevPress || check(UpPress)) {
+            devModeCounter = 0;
 #ifdef HAS_KEYBOARD
             check(PrevPress);
             if (index == 0) index = options.size() - 1;
@@ -556,7 +565,10 @@ int loopOptions(
         /* DW Btn to next item */
         if (check(NextPress) || check(DownPress)) {
             index++;
-            if ((index + 1) > options.size()) index = 0;
+            if ((index + 1) > options.size()) {
+                if (!bruceConfig.devMode) devModeCounter++;
+                index = 0;
+            }
             redraw = true;
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -571,7 +583,7 @@ int loopOptions(
                 forceMenuOption = -1; // reset SerialCommand navigation option
                 Serial.print("Forcely ");
             }
-            Serial.println("Selected: " + String(options[index].label));
+            Serial.println("Selected: " + String(options[chosen].label));
             options[chosen].operation();
             break;
         }
@@ -636,19 +648,20 @@ Opt_Coord drawOptions(
     // drawStatusBar();
 
     int32_t optionsTopY = tftHeight / 2 - menuSize * (FM * 8 + 4) / 2 - 5;
-
+    tft.drawPixel(0, 0, bruceConfig.bgColor);
     if (firstRender) {
         tft.fillRoundRect(
             tftWidth * 0.10, optionsTopY, tftWidth * 0.8, (FM * 8 + 4) * menuSize + 10, 5, bgcolor
         );
+        tft.drawRoundRect(
+            tftWidth * 0.10,
+            tftHeight / 2 - menuSize * (FM * 8 + 4) / 2 - 5,
+            tftWidth * 0.8,
+            (FM * 8 + 4) * menuSize + 10,
+            5,
+            fgcolor
+        );
     }
-    // Uncomment to update the statusBar (causes flickering)
-    // else if(optionsTopY < 25) {
-    //     int32_t occupiedStatusBarHeight = 25 - optionsTopY;
-    //     tft.fillRoundRect(
-    //         tftWidth * 0.10, optionsTopY, tftWidth * 0.8, occupiedStatusBarHeight + 5, 5, bgcolor
-    //     );
-    // }
 
     tft.setTextColor(fgcolor, bgcolor);
     tft.setTextSize(FM);
@@ -682,14 +695,6 @@ Opt_Coord drawOptions(
     }
 Exit:
     if (options.size() > MAX_MENU_SIZE) menuSize = MAX_MENU_SIZE;
-    tft.drawRoundRect(
-        tftWidth * 0.10,
-        tftHeight / 2 - menuSize * (FM * 8 + 4) / 2 - 5,
-        tftWidth * 0.8,
-        (FM * 8 + 4) * menuSize + 10,
-        5,
-        fgcolor
-    );
 #if defined(HAS_TOUCH)
     TouchFooter();
 #endif
@@ -764,18 +769,18 @@ void drawStatusBar() {
     uint8_t bat_margin = 85;
     if (bat > 0) {
         drawBatteryStatus(bat);
-    } else bat_margin = 20;
+    } else bat_margin = 26;
     if (sdcardMounted) {
         tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
         tft.setTextSize(FP);
-        tft.drawString("SD", tftWidth - (bat_margin + 20 * i), 12);
+        tft.drawString("SD", tftWidth - (bat_margin), 12);
         i++;
     } // Indication for SD card on screen
     if (gpsConnected) {
         drawGpsSmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     }
-    if (wifiConnected) {
+    if (WiFi.getMode()) {
         drawWifiSmall(tftWidth - (bat_margin + 23 * i), 7);
         i++;
     } // Draw Wifi Symbol beside battery
@@ -798,13 +803,15 @@ void drawStatusBar() {
     }
 
     if (clock_set) {
-        setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
+        int clock_fontsize = 1; // Font size of the clock / BRUCE + BRUCE_VERSION
+        setTftDisplay(12, 12, bruceConfig.priColor, clock_fontsize, bruceConfig.bgColor);
 #if defined(HAS_RTC)
         _rtc.GetTime(&_time);
         snprintf(timeStr, sizeof(timeStr), "%02d:%02d", _time.Hours, _time.Minutes);
         tft.print(timeStr);
 #else
         updateTimeStr(rtc.getTimeStruct());
+        tft.fillRect(12, 12, 100, clock_fontsize * LH, bruceConfig.bgColor);
         tft.print(timeStr);
 #endif
     } else {
@@ -875,18 +882,8 @@ void printCenterFootnote(String text) {
 }
 
 /***************************************************************************************
-** Function name: getBattery()
-** Description:   Delivers the battery value from 1-100
-***************************************************************************************/
-int getBattery() {
-    int percent = 0;
-
-    return (percent < 0) ? 0 : (percent >= 100) ? 100 : percent;
-}
-
-/***************************************************************************************
 ** Function name: drawBatteryStatus()
-** Description:   Delivers the battery value from 1-100
+** Description:   Draws battery info into the Status bar
 ***************************************************************************************/
 void drawBatteryStatus(uint8_t bat) {
     if (bat == 0) return;
@@ -915,12 +912,12 @@ void drawBatteryStatus(uint8_t bat) {
 void drawWireguardStatus(int x, int y) {
     tft.fillRect(x, y, 20, 17, bruceConfig.bgColor);
     if (isConnectedWireguard) {
-        tft.drawRoundRect(10 + x, 0 + y, 10, 16, 5, TFT_GREEN);
-        tft.fillRoundRect(10 + x, 12 + y, 10, 5, 0, TFT_GREEN);
+        tft.drawRoundRect(11 + x, 0 + y, 8, 12, 5, TFT_GREEN);
+        tft.fillRoundRect(10 + x, 8 + y, 10, 8, 0, TFT_GREEN);
     } else {
-        tft.drawRoundRect(1 + x, 0 + y, 10, 16, 5, bruceConfig.priColor);
-        tft.fillRoundRect(0 + x, 12 + y, 10, 5, 0, bruceConfig.bgColor);
-        tft.fillRoundRect(10 + x, 12 + y, 10, 5, 0, bruceConfig.priColor);
+        tft.drawRoundRect(1 + x, 0 + y, 8, 12, 5, bruceConfig.priColor);
+        tft.fillRoundRect(0 + x, 8 + y, 10, 8, 0, bruceConfig.bgColor);
+        tft.fillRoundRect(6 + x, 8 + y, 10, 10, 0, bruceConfig.priColor);
     }
 }
 
@@ -931,7 +928,11 @@ void drawWireguardStatus(int x, int y) {
 #define MAX_ITEMS (int)(tftHeight - 20) / (LH * FM)
 Opt_Coord listFiles(int index, std::vector<FileList> fileList) {
     Opt_Coord coord;
-    if (index == 0) { tft.fillScreen(bruceConfig.bgColor); }
+    tft.drawPixel(0, 0, bruceConfig.bgColor);
+    if (index == 0) {
+        tft.fillScreen(bruceConfig.bgColor);
+        tft.drawRoundRect(5, 5, tftWidth - 10, tftHeight - 10, 5, bruceConfig.priColor);
+    }
     tft.setCursor(10, 10);
     tft.setTextSize(FM);
     int i = 0;
@@ -966,8 +967,6 @@ Opt_Coord listFiles(int index, std::vector<FileList> fileList) {
         i++;
         if (i == (start + MAX_ITEMS) || i == arraySize) break;
     }
-    tft.drawRoundRect(5, 5, tftWidth - 10, tftHeight - 10, 5, bruceConfig.priColor);
-    tft.drawRoundRect(5, 5, tftWidth - 10, tftHeight - 10, 5, bruceConfig.priColor);
     return coord;
 }
 
@@ -1226,6 +1225,7 @@ bool showJpeg(FS &fs, String filename, int x, int y, bool center) {
     delete[] data_array; // free heap before leaving
     return true;
 }
+
 #if !defined(LITE_VERSION)
 // ####################################################################################################
 //  Draw a GIF on the TFT
@@ -1625,7 +1625,9 @@ bool drawImg(FS &fs, String filename, int x, int y, bool center, int playDuratio
     if (ext.endsWith("jpg")) return showJpeg(fs, filename, x, y, center);
     else if (ext.endsWith("bmp")) return drawBmp(fs, filename, x, y, center);
     else if (ext.endsWith("png")) return drawPNG(fs, filename, x, y, center);
+
 #if !defined(LITE_VERSION)
+
     else if (ext.endsWith("gif")) return showGif(&fs, filename.c_str(), x, y, center, playDurationMs);
 #endif
     else log_e("Image not supported");
@@ -1637,8 +1639,19 @@ bool drawImg(FS &fs, String filename, int x, int y, bool center, int playDuratio
 /// Draw PNG files
 
 #include <PNGdec.h>
-#define MAX_IMAGE_WIDTH 320
-PNG *png;
+#if TFT_WIDTH > TFT_HEIGHT
+#define MAX_IMAGE_WIDTH TFT_WIDTH
+#else
+#define MAX_IMAGE_WIDTH TFT_HEIGHT
+#endif
+PNG *png = nullptr;
+// Optional pointer to write decoded lines into a cached BIN file
+static File *pngBinOut = nullptr;
+static bool pngCacheOnly = false;
+// Optionally use heap capabilities on ESP32 to pick the best memory region for the decoder
+#if defined(ESP32)
+#include <esp_heap_caps.h>
+#endif
 // Functions to access a file on the SD card
 File myfile;
 FS *_fs;
@@ -1664,16 +1677,82 @@ int32_t mySeek(PNGFILE *handle, int32_t position) {
 int16_t xpos = 0;
 int16_t ypos = 0;
 int PNGDraw(PNGDRAW *pDraw) {
-    uint16_t usPixels[320];
+    uint16_t usPixels[MAX_IMAGE_WIDTH];
     // static uint16_t dmaBuffer[MAX_IMAGE_WIDTH]; // static so buffer persists after fn exit
     uint8_t r = ((uint16_t)bruceConfig.bgColor & 0xF800) >> 8;
     uint8_t g = ((uint16_t)bruceConfig.bgColor & 0x07E0) >> 3;
     uint8_t b = ((uint16_t)bruceConfig.bgColor & 0x001F) << 3;
     png->getLineAsRGB565(pDraw, usPixels, PNG_RGB565_BIG_ENDIAN, b << 16 | g << 8 | r);
-    tft.drawPixel(0, 0, 0);
-    tft.drawPixel(0, 0, 0);
-    tft.pushImage(xpos, ypos + pDraw->y, pDraw->iWidth, 1, usPixels);
+    if (!pngCacheOnly) {
+        tft.drawPixel(0, 0, 0);
+        tft.drawPixel(0, 0, 0);
+        tft.pushImage(xpos, ypos + pDraw->y, pDraw->iWidth, 1, usPixels);
+    }
+    if (pngBinOut) { pngBinOut->write((uint8_t *)usPixels, pDraw->iWidth * sizeof(uint16_t)); }
     return 1;
+}
+
+// Build a cache path alongside the PNG: <dir>/tmp/<basename>.bin
+static String buildPngBinPath(const String &pngPath) {
+    int slash = pngPath.lastIndexOf('/');
+    String dir = (slash >= 0) ? pngPath.substring(0, slash) : "";
+    String name = pngPath.substring(slash + 1);
+    int dot = name.lastIndexOf('.');
+    if (dot > 0) name = name.substring(0, dot);
+
+    String tmpDir = dir.length() ? dir + "/tmp" : "/tmp";
+    if (!tmpDir.startsWith("/")) tmpDir = "/" + tmpDir;
+
+    return tmpDir + "/" + name + ".bin";
+}
+
+static bool ensureTmpDir(FS &fs, const String &binPath) {
+    int slash = binPath.lastIndexOf('/');
+    if (slash < 0) return false;
+    String dir = binPath.substring(0, slash);
+    if (fs.exists(dir)) return true;
+    return fs.mkdir(dir);
+}
+
+// Render a previously cached BIN (RGB565 LE with 2-byte width/height header)
+static bool drawPngBin(FS &fs, const String &binPath, int x, int y, bool center) {
+    File f = fs.open(binPath, FILE_READ);
+    if (!f) return false;
+
+    uint16_t w = 0, h = 0;
+    if (f.read((uint8_t *)&w, sizeof(uint16_t)) != sizeof(uint16_t) ||
+        f.read((uint8_t *)&h, sizeof(uint16_t)) != sizeof(uint16_t)) {
+        f.close();
+        return false;
+    }
+
+    if (center) {
+        x = x + (tftWidth - w) / 2;
+        y = y + (tftHeight - h) / 2;
+    }
+
+    if (x >= tft.width() || y >= tft.height()) {
+        f.close();
+        return false;
+    }
+
+    std::unique_ptr<uint16_t[]> line(new (std::nothrow) uint16_t[w]);
+    if (!line) {
+        f.close();
+        return false;
+    }
+
+    size_t rowBytes = w * sizeof(uint16_t);
+    for (uint16_t row = 0; row < h; ++row) {
+        if (f.read((uint8_t *)line.get(), rowBytes) != rowBytes) {
+            f.close();
+            return false;
+        }
+        tft.pushImage(x, y + row, w, 1, line.get());
+    }
+
+    f.close();
+    return true;
 }
 
 bool drawPNG(FS &fs, String filename, int x, int y, bool center) {
@@ -1681,9 +1760,29 @@ bool drawPNG(FS &fs, String filename, int x, int y, bool center) {
     _fs = &fs;
     uint32_t dt = millis();
 
-    // After starting WebUI, it is not possible to draw PNGs anymore, because there are no RAM memoty
-    // available Need to fin out a way to make it work
-    void *mem = psramFound() ? ps_malloc(sizeof(PNG)) : malloc(sizeof(PNG));
+    String binPath = buildPngBinPath(filename);
+    if (fs.exists(binPath)) {
+        if (pngCacheOnly) return true; // cache already ready
+        if (drawPngBin(fs, binPath, x, y, center)) return true;
+        fs.remove(binPath); // stale cache, fall back to decode
+    }
+
+    // Allocate decoder only while drawing, then release to keep RAM available for Wi-Fi/AP usage
+#if defined(ESP32)
+    bool usedHeapCaps = true;
+    void *mem = psramFound() ? heap_caps_malloc(sizeof(PNG), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                             : heap_caps_malloc(sizeof(PNG), MALLOC_CAP_8BIT);
+    if (!mem) {
+        mem = malloc(sizeof(PNG));
+        usedHeapCaps = false;
+    }
+#else
+    void *mem = malloc(sizeof(PNG));
+#endif
+#if !defined(ESP32)
+    bool usedHeapCaps = false;
+#endif
+
     if (!mem) {
         Serial.println("Fail alloc PNG!");
         bruceConfig.theme.label = true;
@@ -1696,6 +1795,18 @@ bool drawPNG(FS &fs, String filename, int x, int y, bool center) {
         // Serial.printf("image specs: (%d x %d), %d bpp, pixel type: %d\n", png->getWidth(),
         // png->getHeight(), png->getBpp(), png->getPixelType());
 
+        File binFile;
+        if (ensureTmpDir(fs, binPath)) {
+            binFile = fs.open(binPath, FILE_WRITE);
+            if (binFile) {
+                uint16_t w = png->getWidth();
+                uint16_t h = png->getHeight();
+                binFile.write((uint8_t *)&w, sizeof(uint16_t));
+                binFile.write((uint8_t *)&h, sizeof(uint16_t));
+                pngBinOut = &binFile;
+            }
+        }
+
         if (center) {
             xpos = x + (tftWidth - png->getWidth()) / 2;
             ypos = y + (tftHeight - png->getHeight()) / 2;
@@ -1707,20 +1818,52 @@ bool drawPNG(FS &fs, String filename, int x, int y, bool center) {
             rc = png->decode(NULL, 0);
             png->close();
         }
+
+        if (pngBinOut) {
+            pngBinOut->close();
+            pngBinOut = nullptr;
+        } else {
+            if (fs.exists(binPath) && rc != PNG_SUCCESS) fs.remove(binPath);
+        }
+        if (rc != PNG_SUCCESS && fs.exists(binPath)) { fs.remove(binPath); }
+
         // How long did rendering take...
         Serial.print("PNG Loaded in ");
         Serial.print(millis() - dt);
         Serial.println("ms");
     } else {
-    ERROR:
-        delete png;
-        return false;
+        // Decode/open failed, ensure no stale cache
+        if (fs.exists(binPath)) fs.remove(binPath);
     }
-    delete png;
-    return true;
+
+    // Destroy placement-new object and free memory so RAM is available after rendering
+    png->~PNG();
+#if defined(ESP32)
+    if (usedHeapCaps) heap_caps_free(mem);
+    else free(mem);
+#else
+    free(mem);
+#endif
+    png = nullptr;
+
+    return rc == PNG_SUCCESS;
+}
+
+// Prepare (or verify) the cached BIN for a PNG without rendering it on screen
+bool preparePngBin(FS &fs, String filename) {
+    bool previous = pngCacheOnly;
+    pngCacheOnly = true;
+    bool ok = drawPNG(fs, filename, 0, 0, false);
+    pngCacheOnly = previous;
+    return ok;
 }
 #else
+bool preparePngBin(FS &fs, String filename) {
+    log_w("PNG: Not supported in this version");
+    return true;
+}
 bool drawPNG(FS &fs, String filename, int x, int y, bool center) {
     log_w("PNG: Not supported in this version");
+    return false;
 }
 #endif
