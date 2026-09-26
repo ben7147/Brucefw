@@ -5,6 +5,34 @@
 
 MainMenu::MainMenu() {
     _menuItems = {
+        &this->wifiMenu,
+        &this->bleMenu,
+#if !defined(LITE_VERSION)
+        &this->ethernetMenu,
+#endif
+#if !defined(REMOVE_RF_MENU)
+        &this->rfMenu,
+#endif
+#if !defined(REMOVE_RFID_MENU)
+        &this->rfidMenu,
+#endif
+        &this->irMenu,
+        &this->fmMenu,
+        &this->fileMenu,
+        &this->gpsMenu,
+#if !defined(REMOVE_NRF_MENU)
+        &this->nrf24Menu,
+#endif
+#if !defined(LITE_VERSION)
+        &this->scriptsMenu,
+#endif
+        &this->ledMenu,
+        &this->TempHumMenu,
+        &this->buzzerMenu,
+        &this->othersMenu,
+        &this->clockMenu,
+        &this->connectMenu,
+        &this->configMenu,
         &wifiMenu,
         &bleMenu,
         &rfMenu,

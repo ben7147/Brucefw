@@ -5,15 +5,26 @@
 #include "modules/badusb_ble/ducky_typer.h"
 #include "modules/bjs_interpreter/interpreter.h"
 #include "modules/others/clicker.h"
+#include "modules/others/cricket.h"
 #include "modules/others/ibutton.h"
 #include "modules/others/mic.h"
 #include "modules/others/qrcode_menu.h"
+#include "modules/others/random.h"
+#include "modules/others/timer.h"
 #include "modules/others/tururururu.h"
 #include "modules/others/u2f.h"
 // Removed: #include "modules/others/timer.h"
 
 void OthersMenu::optionsMenu() {
     options = {
+        {"Timer",        [=]() { Timer(); }                       },
+        {"Cricket",      [=]() { startChirp(); }                  },
+        {"Mic Record",   mic_record                               }, //@deveclipse
+        {"True/False",   [=]() { Randomizer(); }                  },
+        {"QRCodes",      qrcode_menu                              },
+        {"Megalodon",    shark_setup                              },
+#ifdef MIC_SPM1423
+        {"Mic Spectrum", mic_test                                 },
         {"QRCodes",      qrcode_menu                  },
         {"Megalodon",    shark_setup                  },
 
@@ -29,6 +40,7 @@ void OthersMenu::optionsMenu() {
 #ifndef LITE_VERSION
         {"iButton",      setup_ibutton                },
 #endif
+        {"iButton",      setup_ibutton                            },
 
         // Timer removed - moved to another "Clock"
     };
