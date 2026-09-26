@@ -1018,7 +1018,11 @@ static int bleSpamListLoop(
         }
 
         if (EscPress && PrevPress) EscPress = false;
-        if (check(EscPress)) return -1;
+        if (check(EscPress) || (check(NextPress) && SelPress)) {
+            SelPress = false;
+            NextPress = false;
+            return -1;
+        }
 
         if (check(NextPress)) {
             state.cursor = (state.cursor + 1) % itemCount;
