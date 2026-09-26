@@ -757,15 +757,41 @@ static const char *BLE_SPAM_ANDROID_DEVICES[] = {"Pixel Fast Pair", "Generic And
 static const char *BLE_SPAM_WINDOWS_PRESETS[] = {
     "Generic Swift Pair",
     "Never Gonna Give You Up",
-    "Bill Nye's iPhone",
+    "нахуй",
+    "иди нахуй",
+    "сука блядь",
     "Skibidi Toilet",
     "67",
-    "FBI Surveillance Van"
+    "FBI Surveillance Van",
+    "Суми Ильдико",
+    "Инокаи Мате",
+    "Гаар Оршоля",
+    "Ú még egy vírus",
+    "Bojler eladóóó",
+    "Bojler eladó olcsón",
+    "NPC teach",
+    "Menza ehetetlen ma is",
+    "Pöri Pörög",
+    "Mikor lesz szünet?",
+    "Már szünet van btw"
 };
 
 // BLE Beacon: indices 0..N are presets, then Random/All, then saved custom names, then Add New
 static const char *BLE_SPAM_BEACON_PRESETS[] = {
-    "NeverGonnaGiveYoUp", "Bill Nye's iPhone", "Skibidi Toilet", "67", "FBISurveillanceVan"
+    "NeverGonnaGiveYoUp",
+    "Bill Nye's iPhone",
+    "Skibidi Toilet",
+    "67",
+    "FBISurveillanceVan",
+    "нахуй",
+    "иди нахуй",
+    "сука блят",
+    "Ú még egy vírus",
+    "Bojler eladóóó",
+    "NPC teach",
+    "Pöri Pörög",
+    "Mikor lesz szünet",
+    "Már szünet van"
 };
 static const char *BLE_SPAM_SAMSUNG_DEVICES[] = {
     "Galaxy Buds", "Galaxy Watch", "Generic Samsung", "Random / All"
