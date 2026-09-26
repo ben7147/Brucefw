@@ -270,9 +270,19 @@ void IrRead::discard_signal() {
 
 void IrRead::emulate_signal() {
     IRCode code;
-    if (raw) {
+
+    // Temporarily pause IR receiver interrupts so transmitting isn't interrupted
+    irrecv.disableIRIn();
+
+    if (raw || results.decode_type == decode_type_t::UNKNOWN) {
         code.type = "raw";
         code.frequency = IR_FREQUENCY;
+        code.data = _captured_raw_signal;
+    } else if (hasACState(results.decode_type)) {
+        code.type = "parsed";
+        code.protocol = getParsedProtocolName(results);
+        code.state = parse_state_signal();
+        code.bits = results.bits;
         code.data = _captured_raw_signal;
     } else {
         code.type = "parsed";
@@ -283,18 +293,26 @@ void IrRead::emulate_signal() {
             : uint32ToString(results.command);
         code.bits = results.bits;
         code.data = resultToHexidecimal(&results);
-        if (code.protocol == "") {
+        
+        // Fallback to raw mode if parsed protocol is empty or unknown to ensure transmission succeeds
+        if (code.protocol == "" || code.protocol == "UNKNOWN") {
             code.type = "raw";
             code.frequency = IR_FREQUENCY;
             code.data = _captured_raw_signal;
         }
     }
+
     sendIRCommand(&code);
+
     if (code.type == "parsed" &&
         (code.protocol == "RC5" || code.protocol == "RC5X" || code.protocol == "RC6")) {
         delay(35);
         sendIRCommand(&code);
     }
+
+    // Resume IR receiver after transmitting
+    irrecv.enableIRIn();
+
     _emulate_mode = true;
     display_banner();
     tft.setTextSize(FP);
