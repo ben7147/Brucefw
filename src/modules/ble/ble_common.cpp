@@ -1,15 +1,41 @@
 #include "ble_common.h"
 #include "core/mykeyboard.h"
+#include "core/radio_mem.h"
+#include "core/ram_profile.h"
 #include "core/utils.h"
+#include "core/wifi/wifi_common.h"
+#include "esp_mac.h"
+#include "modules/badusb_ble/ducky_typer.h"
+#if !defined(LITE_VERSION)
+#include "BLE_Suite.h"
+#endif
 
 #define SERVICE_UUID "1bc68b2a-f3e3-11e9-81b4-2a2ae2dbcce4"
 #define CHARACTERISTIC_RX_UUID "1bc68da0-f3e3-11e9-81b4-2a2ae2dbcce4"
 #define CHARACTERISTIC_TX_UUID "1bc68efe-f3e3-11e9-81b4-2a2ae2dbcce4"
 
-#define SCANTIME 5
-#define SCANTYPE ACTIVE
-#define SCAN_INT 100
-#define SCAN_WINDOW 99
+BLEScan *pBLEScan = nullptr;
+int scanTime = SCANTIME;
+
+bool bleNotifyRetry(NimBLECharacteristic *chr, const uint8_t *value, size_t length, uint8_t retries) {
+    if (chr == nullptr) return false;
+    if (chr->notify(value, length)) return true;
+    for (uint8_t i = 0; i < retries; i++) {
+        vTaskDelay(1);
+        if (chr->notify(value, length)) return true;
+    }
+    return false;
+}
+
+bool bleNotifyRetry(NimBLECharacteristic *chr, uint8_t retries) {
+    if (chr == nullptr) return false;
+    if (chr->notify()) return true;
+    for (uint8_t i = 0; i < retries; i++) {
+        vTaskDelay(1);
+        if (chr->notify()) return true;
+    }
+    return false;
+}
 
 #define ENDIAN_CHANGE_U16(x) ((((x) & 0xFF00) >> 8) + (((x) & 0xFF) << 8))
 
@@ -33,14 +59,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic *pCharacteristic) { data = pCharacteristic->getValue(); }
 };
 
-int scanTime = SCANTIME; // In seconds
-BLEScan *pBLEScan;
-
 uint8_t sta_mac[6];
 char strID[18];
 char strAddl[200];
 
-void ble_info(String name, String address, String signal) {
+void ble_info(const String &name, const String &address, const String &signal) {
     drawMainBorder();
     tft.setTextColor(bruceConfig.priColor);
     tft.drawCentreString("-=Information=-", tftWidth / 2, 28, SMOOTH_FONT);
@@ -51,48 +74,92 @@ void ble_info(String name, String address, String signal) {
 
     delay(300);
     while (!check(SelPress)) {
-        while (!check(SelPress)) { yield(); } // timerless debounce
+        while (!check(SelPress)) { yield(); }
         returnToMenu = true;
         break;
     }
 }
 
-class AdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
-    void onResult(NimBLEAdvertisedDevice *advertisedDevice) {
-        String bt_title;
-        String bt_name;
-        String bt_address;
-        String bt_signal;
+class AdvertisedDeviceCallbacks : public NimBLEScanCallbacks {};
 
-        bt_name = advertisedDevice->getName().c_str();
-        bt_title = advertisedDevice->getName().c_str();
-        bt_address = advertisedDevice->getAddress().toString().c_str();
-        bt_signal = String(advertisedDevice->getRSSI());
-        // Serial.println("\n\nAddress - " + bt_address + "Name-"+ bt_name +"\n\n");
-        if (bt_title.isEmpty()) bt_title = bt_address;
-        if (bt_name.isEmpty()) bt_name = "<no name>";
-        // If BT name is empty, set NONAME
-        if (options.size() < 250)
-            options.emplace_back(bt_title.c_str(), [=]() { ble_info(bt_name, bt_address, bt_signal); });
-        else {
-            Serial.println("Memory low, stopping BLE scan...");
-            pBLEScan->stop();
+static AdvertisedDeviceCallbacks g_scanCallbacks;
+
+static bool is_ble_inited = false;
+
+void stopBLEStack() {
+    if (pBLEScan) {
+        pBLEScan->stop();
+        pBLEScan->clearResults();
+        pBLEScan = nullptr;
+    }
+
+    if (is_ble_inited) {
+#if !defined(LITE_VERSION)
+        if (BLEStateManager::isBLEActive() || BLEStateManager::getActiveClientCount() > 0) {
+            BLEStateManager::deinitBLE(true);
+        } else
+#endif
+            if (BLEDevice::getScan() != nullptr || BLEDevice::getAdvertising() != nullptr ||
+                BLEDevice::getServer() != nullptr || BLEConnected) {
+            BLEDevice::deinit();
         }
     }
-};
 
-void ble_scan_setup() {
+    pServer = nullptr;
+    pService = nullptr;
+    pTxCharacteristic = nullptr;
+    pRxCharacteristic = nullptr;
+    deviceConnected = false;
+    oldDeviceConnected = false;
+    bleDataTransferEnabled = false;
+    is_ble_inited = false;
+    BLEConnected = false;
+#if !defined(LITE_VERSION)
+    if (hid_ble) {
+        delete hid_ble;
+        hid_ble = nullptr;
+    }
+#endif
+}
+
+bool ble_scan_setup() {
+    if (FORCE_RADIO_TEARDOWN_ON_SWITCH) {
+        if (WiFi.getMode() != WIFI_MODE_NULL || wifiConnected) {
+            wifiDisconnect();
+            delay(200);
+        }
+
+        stopBLEStack();
+        delay(100);
+    }
+
+    RAM_LOG("ble-scan pre-init");
+
+    // FIX: Always try to init - if already init'd, it's a no-op
+    if (!radioHasMemForBle()) {
+        displayError("Low RAM: free WiFi/SD first", true);
+        returnToMenu = true;
+        return false;
+    }
+
     BLEDevice::init("");
+    is_ble_inited = true;
+
+    RAM_LOG("ble-scan post-init");
     pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(new AdvertisedDeviceCallbacks());
-    // Active scan uses more power, but get results faster
+    if (!pBLEScan) {
+        displayError("Failed to get scan object", true);
+        return false;
+    }
+
+    pBLEScan->setScanCallbacks(&g_scanCallbacks);
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(SCAN_INT);
-    // Less or equal setInterval value
     pBLEScan->setWindow(SCAN_WINDOW);
+    pBLEScan->setDuplicateFilter(false);
 
-    // Bluetooth MAC Address
     esp_read_mac(sta_mac, ESP_MAC_BT);
+
     sprintf(
         strID,
         "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -104,40 +171,120 @@ void ble_scan_setup() {
         sta_mac[5]
     );
     vTaskDelay(100 / portTICK_PERIOD_MS);
+    return true;
 }
 
 void ble_scan() {
     displayTextLine("Scanning..");
 
     options = {};
-    ble_scan_setup();
-    BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
+    options.reserve(MAX_DISPLAY_DEVICES);
 
-    addOptionToMainMenu();
+    bool bleWasActiveBefore = BLEConnected || (BLEDevice::getServer() != nullptr);
+#if !defined(LITE_VERSION)
+    bleWasActiveBefore =
+        bleWasActiveBefore || BLEStateManager::isBLEActive() || BLEStateManager::getActiveClientCount() > 0;
+#endif
 
-    loopOptions(options);
-    options.clear();
+    if (!ble_scan_setup() || pBLEScan == nullptr) {
+        displayError("Failed to init BLE scan");
+        return;
+    }
 
-    // Delete results fromBLEScan buffer to release memory
     pBLEScan->clearResults();
+
+    try {
+        BLEScanResults foundDevices = pBLEScan->getResults(scanTime * 1000, false);
+        int deviceCount = foundDevices.getCount();
+        int processedCount = 0;
+        int maxToProcess = min(deviceCount, MAX_DISPLAY_DEVICES);
+
+        for (int i = 0; i < maxToProcess && processedCount < MAX_DISPLAY_DEVICES; i++) {
+            const NimBLEAdvertisedDevice *advertisedDevice = foundDevices.getDevice(i);
+            if (!advertisedDevice) continue;
+
+            String bt_title = "";
+            String bt_name;
+            String bt_address;
+            String bt_signal;
+
+            bt_name = advertisedDevice->getName().c_str();
+            bt_address = advertisedDevice->getAddress().toString().c_str();
+            bt_signal = String(advertisedDevice->getRSSI());
+
+            if (bt_name.isEmpty()) bt_name = "<no name>";
+            else bt_title = bt_name;
+            if (bt_title.isEmpty()) bt_title = bt_address;
+
+            if (options.size() < MAX_DISPLAY_DEVICES) {
+                options.emplace_back(bt_title.c_str(), [=]() { ble_info(bt_name, bt_address, bt_signal); });
+                processedCount++;
+            }
+        }
+
+        if (options.size() >= MAX_DISPLAY_DEVICES) { options.emplace_back("... and more devices", nullptr); }
+    } catch (...) {
+        displayError("BLE scan error");
+        pBLEScan->clearResults();
+        return;
+    }
+
+    if (pBLEScan) { pBLEScan->stop(); }
+
+    if (!bleWasActiveBefore) {
+#if !defined(LITE_VERSION)
+        if (!BLEStateManager::isBLEActive()) { stopBLEStack(); }
+#else
+        stopBLEStack();
+#endif
+    }
+
+    if (!options.empty()) {
+        addOptionToMainMenu();
+        loopOptions(options);
+        options.clear();
+    } else {
+        displayError("No devices found");
+        delay(1000);
+    }
 }
 
 bool initBLEServer() {
     uint64_t chipid = ESP.getEfuseMac();
     String blename = "Bruce-" + String((uint8_t)(chipid >> 32), HEX);
 
-    BLEDevice::init(blename.c_str());
-    // BLEDevice::setPower(ESP_PWR_LVL_N12);
+    if (!is_ble_inited) {
+        BLEDevice::init(blename.c_str());
+        is_ble_inited = true;
+    }
+
     pServer = BLEDevice::createServer();
+    if (!pServer) {
+        displayError("Failed to create BLE server");
+        return false;
+    }
 
     pServer->setCallbacks(new MyServerCallbacks());
     pService = pServer->createService(SERVICE_UUID);
+    if (!pService) {
+        displayError("Failed to create BLE service");
+        return false;
+    }
+
     pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_RX_UUID, NIMBLE_PROPERTY::NOTIFY);
+    if (!pTxCharacteristic) {
+        displayError("Failed to create TX characteristic");
+        return false;
+    }
 
     pTxCharacteristic->addDescriptor(new NimBLE2904());
-    BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
+    pRxCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_TX_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
+    if (!pRxCharacteristic) {
+        displayError("Failed to create RX characteristic");
+        return false;
+    }
     pRxCharacteristic->setCallbacks(new MyCallbacks());
 
     return true;
@@ -146,10 +293,16 @@ bool initBLEServer() {
 void disPlayBLESend() {
     uint8_t senddata[2] = {0};
     tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorder(); // Moved up to avoid drawing screen issues
+    drawMainBorder();
     tft.setTextSize(1);
 
-    pService->start();
+    if (!pServer) {
+        if (!initBLEServer()) {
+            displayError("Failed to init BLE server");
+            return;
+        }
+    }
+
     pServer->getAdvertising()->start();
 
     uint64_t chipid = ESP.getEfuseMac();
@@ -167,7 +320,6 @@ void disPlayBLESend() {
                 tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
                 tft.setTextSize(FM);
                 tft.setCursor(12, 50);
-                // tft.printf("BLE connect!\n");
                 tft.printf("BLE Send\n");
                 tft.setTextSize(FM);
             }
@@ -209,29 +361,30 @@ void disPlayBLESend() {
             }
             wasConnected = false;
         }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     tft.setTextColor(TFT_WHITE);
-    pService->~NimBLEService();
     pServer->getAdvertising()->stop();
-    BLEDevice::deinit();
     BLEConnected = false;
 }
-
-static bool is_ble_inited = false;
 
 void ble_test() {
     printf("ble test\n");
 
-    // if (!is_ble_inited)
-    // {
-    printf("Init ble server\n");
-    initBLEServer();
-    delay(100);
-    is_ble_inited = true;
-    // }
+    if (!is_ble_inited) {
+        printf("Init ble server\n");
+        if (!initBLEServer()) {
+            displayError("Failed to init BLE server");
+            return;
+        }
+        delay(100);
+    }
 
     disPlayBLESend();
+
+    if (pServer) { pServer->getAdvertising()->stop(); }
+    stopBLEStack();
 
     printf("Quit ble test\n");
 }

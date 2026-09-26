@@ -4,27 +4,34 @@
 #include "core/sd_functions.h"
 #include "core/utils.h"
 #include "core/wifi/webInterface.h"
+#include "core/connect/file_sharing.h"
+#include "core/connect/serial_commands.h"
 
 void FileMenu::optionsMenu() {
     options.clear();
-    if(sdcardMounted) options.push_back({"SD Card", [=]() { loopSD(SD); }});
+    if (setupSdCard()) options.push_back({"SD Card", [=]() { loopSD(SD); }});
     options.push_back({"LittleFS", [=]() { loopSD(LittleFS); }});
     options.push_back({"WebUI", loopOptionsWebUi});
-#if defined(ARDUINO_USB_MODE) && !defined(USE_SD_MMC)
+
+#if !defined(LITE_VERSION)
+    options.push_back({"Connect", [=]() {
+        std::vector<Option> connectOpts = {
+            {"Send File", [=]() { FileSharing().sendFile(); }        },
+            {"Recv File", [=]() { FileSharing().receiveFile(); }     },
+            {"Send Cmds", [=]() { EspSerialCmd().sendCommands(); }   },
+            {"Recv Cmds", [=]() { EspSerialCmd().receiveCommands(); }},
+            {"Back",      [=]() { optionsMenu(); }                   }
+        };
+        loopOptions(connectOpts, MENU_TYPE_SUBMENU, "Connect");
+    }});
+#endif
+
+#if defined(SOC_USB_OTG_SUPPORTED)
     options.push_back({"Mass Storage", [=]() { MassStorage(); }});
 #endif
     addOptionToMainMenu();
 
     loopOptions(options, MENU_TYPE_SUBMENU, "Files");
-}
-void FileMenu::drawIconImg() {
-    drawImg(
-        *bruceConfig.themeFS(),
-        bruceConfig.getThemeItemImg(bruceConfig.theme.paths.files),
-        0,
-        imgCenterY,
-        true
-    );
 }
 void FileMenu::drawIcon(float scale) {
     clearIconArea();

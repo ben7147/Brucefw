@@ -1,3 +1,4 @@
+#ifndef LITE_VERSION
 #include "pn532ble.h"
 #include "apdu.h"
 #include "core/display.h"
@@ -69,53 +70,54 @@ void Pn532ble::loop() {
             if (checkLetterShortcutPress() == 'i') { setMode(HF_ISO15693_READ_MODE); }
         }
 #endif
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
 void Pn532ble::selectMode() {
     options = {};
     if (pn532_ble.isConnected()) {
-        options.push_back({"Scan Tag", [=]() { scanTagMenu(); }});
-        options.push_back({"Read Tag", [=]() { readTagMenu(); }});
-        options.push_back({"Emulate Tag", [&]() { loadNdefEmulateMenu(); }});
+        options.push_back({"Scan Tag", [this]() { scanTagMenu(); }});
+        options.push_back({"Read Tag", [this]() { readTagMenu(); }});
+        options.push_back({"Emulate Tag", [this]() { loadNdefEmulateMenu(); }});
         if (mfd.size() > 0 || mfud.size() > 0 || iso15dump.size() > 0) {
-            options.push_back({"Write Dump", [=]() { writeDumpMenu(); }});
-            options.push_back({"Save Dump", [=]() { saveDumpMenu(); }});
+            options.push_back({"Write Dump", [this]() { writeDumpMenu(); }});
+            options.push_back({"Save Dump", [this]() { saveDumpMenu(); }});
         };
     }
-    options.push_back({"Load Dump", [&]() { loadDumpMenu(); }});
-    options.push_back({"Back", [&]() { setMode(STANDBY_MODE); }});
+    options.push_back({"Load Dump", [this]() { loadDumpMenu(); }});
+    options.push_back({"Back", [this]() { setMode(STANDBY_MODE); }});
 
     loopOptions(options);
 }
 
 void Pn532ble::scanTagMenu() {
     options = {
-        {"Scan ISO14443A", [=]() { setMode(HF_14A_SCAN_MODE); }},
+        {"Scan ISO14443A", [this]() { setMode(HF_14A_SCAN_MODE); }},
     };
 
     if (pn532_ble.isPN532Killer()) {
-        options.push_back({"Scan ISO15693", [=]() { setMode(HF_15_SCAN_MODE); }});
-        options.push_back({"Scan EM4100", [=]() { setMode(LF_EM4100_SCAN_MODE); }});
+        options.push_back({"Scan ISO15693", [this]() { setMode(HF_15_SCAN_MODE); }});
+        options.push_back({"Scan EM4100", [this]() { setMode(LF_EM4100_SCAN_MODE); }});
     }
 
-    options.push_back({"Back", [=]() { selectMode(); }});
+    options.push_back({"Back", [this]() { selectMode(); }});
 
     loopOptions(options);
 }
 
 void Pn532ble::readTagMenu() {
     options = {
-        {"Read MFC", [=]() { setMode(HF_MF_READ_MODE); } },
-        {"Read MFU", [=]() { setMode(HF_MFU_READ_MODE); }},
+        {"Read MFC", [this]() { setMode(HF_MF_READ_MODE); } },
+        {"Read MFU", [this]() { setMode(HF_MFU_READ_MODE); }},
     };
 
     if (pn532_ble.isPN532Killer()) {
-        options.push_back({"Read ISO15693", [=]() { setMode(HF_ISO15693_READ_MODE); }});
-        options.push_back({"Read EM4100", [=]() { setMode(LF_EM4100_SCAN_MODE); }});
+        options.push_back({"Read ISO15693", [this]() { setMode(HF_ISO15693_READ_MODE); }});
+        options.push_back({"Read EM4100", [this]() { setMode(LF_EM4100_SCAN_MODE); }});
     }
 
-    options.push_back({"Back", [=]() { selectMode(); }});
+    options.push_back({"Back", [this]() { selectMode(); }});
 
     loopOptions(options);
 }
@@ -124,18 +126,18 @@ void Pn532ble::writeDumpMenu() {
     options = {};
 
     if (mfd.size() > 0) {
-        options.push_back({"Write MFC", [=]() { setMode(HF_MF_WRITE_MODE); }});
+        options.push_back({"Write MFC", [this]() { setMode(HF_MF_WRITE_MODE); }});
     }
 
     if (mfud.size() > 0) {
-        options.push_back({"Write MFU", [=]() { setMode(HF_MFU_WRITE_MODE); }});
+        options.push_back({"Write MFU", [this]() { setMode(HF_MFU_WRITE_MODE); }});
     }
 
     if (pn532_ble.isPN532Killer() && iso15dump.size() > 0) {
-        options.push_back({"Write ISO15693", [=]() { setMode(HF_ISO15693_WRITE_MODE); }});
+        options.push_back({"Write ISO15693", [this]() { setMode(HF_ISO15693_WRITE_MODE); }});
     }
 
-    options.push_back({"Back", [=]() { selectMode(); }});
+    options.push_back({"Back", [this]() { selectMode(); }});
 
     loopOptions(options);
 }
@@ -143,7 +145,7 @@ void Pn532ble::writeDumpMenu() {
 void Pn532ble::saveDumpMenu() {
     options = {};
     if (mfd.size() == 320 || mfd.size() == 1024 || mfd.size() == 4096) {
-        options.push_back({"Save MFC dump", [=]() {
+        options.push_back({"Save MFC dump", [this]() {
                                String fileName =
                                    saveHfDumpBinFile(mfd, pn532_ble.hf14aTagInfo.uid_hex, "mf-");
                                if (fileName != "") {
@@ -155,7 +157,7 @@ void Pn532ble::saveDumpMenu() {
     }
 
     if (mfud.size() > 0) {
-        options.push_back({"Save MFU dump", [=]() {
+        options.push_back({"Save MFU dump", [this]() {
                                String fileName =
                                    saveHfDumpBinFile(mfud, pn532_ble.hf14aTagInfo.uid_hex, "mfu-");
                                if (fileName != "") {
@@ -167,7 +169,7 @@ void Pn532ble::saveDumpMenu() {
     }
 
     if (iso15dump.size() > 0) {
-        options.push_back({"Save ISO15693 dump", [=]() {
+        options.push_back({"Save ISO15693 dump", [this]() {
                                String fileName =
                                    saveHfDumpBinFile(iso15dump, pn532_ble.hf15TagInfo.uid_hex, "iso15-");
                                if (fileName != "") {
@@ -178,16 +180,16 @@ void Pn532ble::saveDumpMenu() {
                            }});
     }
 
-    options.push_back({"Back", [=]() { selectMode(); }});
+    options.push_back({"Back", [this]() { selectMode(); }});
     loopOptions(options);
 }
 
 void Pn532ble::loadDumpMenu() {
     options = {
-        {"Load MFC",      [=]() { setMode(HF_MF_LOAD_DUMP_MODE); }      },
-        {"Load MFU",      [=]() { setMode(HF_MFU_LOAD_DUMP_MODE); }     },
-        {"Load ISO15693", [=]() { setMode(HF_ISO15693_LOAD_DUMP_MODE); }},
-        {"Back",          [=]() { selectMode(); }                       },
+        {"Load MFC",      [this]() { setMode(HF_MF_LOAD_DUMP_MODE); }      },
+        {"Load MFU",      [this]() { setMode(HF_MFU_LOAD_DUMP_MODE); }     },
+        {"Load ISO15693", [this]() { setMode(HF_ISO15693_LOAD_DUMP_MODE); }},
+        {"Back",          [this]() { selectMode(); }                       },
     };
 
     loopOptions(options);
@@ -208,6 +210,7 @@ void Pn532ble::loadNdefEmulateMenu() {
     loopOptions(options);
 
     String ndef_data = keyboard(prefix, 255, "NDEF data:");
+    if (ndef_data == "\x1B") return;
     ndef_data.trim();
     emulationNdefData = ndef_data;
     setMode(HF_TG_INIT_AS_TARGET_MODE);
@@ -536,11 +539,11 @@ void Pn532ble::hf14aMfReadDumpMode() {
 
         while (check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
         while (!check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     } else {
         area.addLine("Not Mifare Ultralight");
@@ -631,11 +634,11 @@ void Pn532ble::hf14aMfuReadDumpMode() {
 
         while (check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
         while (!check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     } else {
         area.addLine("Not Mifare Ultralight");
@@ -696,11 +699,11 @@ void Pn532ble::hf14aMfuWriteDumpMode() {
         pn532_ble.wakeup();
         while (check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
         while (!check(SelPress)) {
             updateArea(area);
-            yield();
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     } else {
         area.addLine("Not Mifare Ultralight");
@@ -845,11 +848,11 @@ void Pn532ble::hf14aMfWriteDumpMode() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -948,11 +951,11 @@ void Pn532ble::hf15ReadDumpMode() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -1007,11 +1010,11 @@ void Pn532ble::hf15WriteDumpMode() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -1069,11 +1072,11 @@ void Pn532ble::loadMifareClassicDumpFile() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -1126,11 +1129,11 @@ void Pn532ble::loadMifareUltralightDumpFile() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -1183,11 +1186,11 @@ void Pn532ble::loadIso15693DumpFile() {
 
     while (check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     while (!check(SelPress)) {
         updateArea(area);
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -1474,3 +1477,4 @@ String Pn532ble::saveHfDumpBinFile(std::vector<uint8_t> data, String uid, String
     file.close();
     return fileName;
 }
+#endif

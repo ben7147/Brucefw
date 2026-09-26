@@ -7,23 +7,25 @@
 #include "ir_commands.h"
 #include "power_commands.h"
 #include "rf_commands.h"
+#include "rfid_commands.h"
 #include "screen_commands.h"
 #include "settings_commands.h"
 #include "sound_commands.h"
 #include "storage_commands.h"
 #include "util_commands.h"
 #include "wifi_commands.h"
+#include <globals.h>
 
 void cliErrorCallback(cmd_error *e) {
     CommandError cmdError(e); // Create wrapper object
 
-    Serial.print("ERROR: ");
-    Serial.println(cmdError.toString());
+    serialDevice->print("ERROR: ");
+    serialDevice->println(cmdError.toString());
 
     if (cmdError.hasCommand()) {
-        Serial.print("Did you mean \"");
-        Serial.print(cmdError.getCommand().toString());
-        Serial.println("\"?");
+        serialDevice->print("Did you mean \"");
+        serialDevice->print(cmdError.getCommand().toString());
+        serialDevice->println("\"?");
     }
 }
 
@@ -37,6 +39,7 @@ void SerialCli::setup() {
     createIrCommands(&_cli);
     createPowerCommands(&_cli);
     createRfCommands(&_cli);
+    createRfidCommands(&_cli);
     createSettingsCommands(&_cli);
     createStorageCommands(&_cli);
     createUtilCommands(&_cli);

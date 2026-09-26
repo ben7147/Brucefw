@@ -9,19 +9,31 @@ public:
     virtual ~MenuItemInterface() = default;
     virtual void optionsMenu(void) = 0;
     virtual void drawIcon(float scale = 1) = 0;
-    virtual void drawIconImg() = 0;
-    virtual bool getTheme() = 0;
+    virtual void drawIconImg() {
+        drawImg(
+            *bruceConfig.themeFS(),
+            bruceConfig.getThemeItemImg(themePath()),  // const String& - no heap alloc
+            0,
+            imgCenterY,
+            true,
+            bruceConfig.theme.gifDuration,
+            false
+        );
+    }
+    virtual bool hasTheme() = 0;
+    virtual const String& themePath() = 0;
 
-    String getName() const { return _name; }
+    bool checkTheme() { return hasTheme() && themePath().length() > 0; }
+    String getName() const { return String(_name); }
 
     void draw(float scale = 1) {
-        if (rotation != bruceConfig.rotation) resetCoordinates();
-        if (!getTheme()) {
+        if (rotation != bruceConfigPins.rotation) resetCoordinates();
+        if (!checkTheme()) {
+            tft.fillRect(0, 27, tftWidth, tftHeight - 27, bruceConfig.bgColor);
             drawIcon(scale);
             drawArrows(scale);
             drawTitle(scale);
         } else {
-            clearImgArea();
             if (bruceConfig.theme.label)
                 drawTitle(scale); // If using .GIF, labels are draw after complete, which takes some time
             drawIconImg();
@@ -94,7 +106,7 @@ public:
     }
 
 protected:
-    String _name = "";
+    const char *_name = "";
     uint8_t rotation = ROTATION;
 
     int iconAreaH =
@@ -112,7 +124,7 @@ protected:
     int arrowAreaX = BORDER_PAD_X;
     int arrowAreaW = iconAreaX - arrowAreaX;
 
-    MenuItemInterface(const String &name) : _name(name) {}
+    MenuItemInterface(const char *name) : _name(name) {}
 
     void clearIconArea(void) {
         tft.fillRect(iconAreaX, iconAreaY, iconAreaW, iconAreaH, bruceConfig.bgColor);
@@ -141,8 +153,10 @@ protected:
         arrowAreaX = BORDER_PAD_X;
         arrowAreaW = iconAreaX - arrowAreaX;
 
-        rotation = bruceConfig.rotation;
+        rotation = bruceConfigPins.rotation;
     }
+
+private:
 };
 
-#endif
+#endif // __MENU_ITEM_INTERFACE_H__

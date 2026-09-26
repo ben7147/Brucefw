@@ -6,11 +6,10 @@
 #include "sdkconfig.h"
 #if defined(CONFIG_BT_ENABLED)
 #define USE_NIMBLE
-#if defined(USE_NIMBLE)
-
 #include "NimBLECharacteristic.h"
 #include "NimBLEHIDDevice.h"
-
+#include "NimBLEAdvertising.h"
+#include "NimBLEServer.h"
 #define BLEDevice NimBLEDevice
 #define BLEServerCallbacks NimBLEServerCallbacks
 #define BLECharacteristicCallbacks NimBLECharacteristicCallbacks
@@ -18,13 +17,6 @@
 #define BLECharacteristic NimBLECharacteristic
 #define BLEAdvertising NimBLEAdvertising
 #define BLEServer NimBLEServer
-
-#else
-
-#include "BLECharacteristic.h"
-#include "BLEHIDDevice.h"
-
-#endif // USE_NIMBLE
 
 #include "Bad_Usb_Lib.h"
 #include "Print.h"
@@ -83,7 +75,7 @@ public:
     void releaseAll(void) override;
     bool isConnected(void);
     void setBatteryLevel(uint8_t level);
-    void setName(String deviceName);
+    void setName(const String &deviceName);
     void setDelay(uint32_t ms);
     void setAppearence(uint16_t v) { appearance = v; }
     void setRandomUUID(void) { _randUUID = !_randUUID; };
@@ -96,13 +88,32 @@ public:
 
 protected:
     bool _randUUID = false;
-    virtual void onStarted(BLEServer *pServer) {};
-    virtual void onConnect(BLEServer *pServer) override;
-    virtual void onDisconnect(BLEServer *pServer) override;
-    virtual void onAuthenticationComplete(ble_gap_conn_desc *desc);
-    virtual void onWrite(BLECharacteristic *me) override;
-    virtual void
-    onSubscribe(NimBLECharacteristic *pCharacteristic, ble_gap_conn_desc *desc, uint16_t subValue) override;
+
+    class ServerCallbacks : public NimBLEServerCallbacks {
+    private:
+        BleKeyboard *parent;
+
+    public:
+        ServerCallbacks(BleKeyboard *kb) : parent(kb) {}
+        void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) override;
+        void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo, int reason) override;
+        void onAuthenticationComplete(NimBLEConnInfo &connInfo) override;
+    };
+    class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+    private:
+        BleKeyboard *parent;
+
+    public:
+        CharacteristicCallbacks(BleKeyboard *kb) : parent(kb) {}
+        void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override;
+        void onSubscribe(
+            NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo, uint16_t subValue
+        ) override;
+    };
+    uint8_t getSubscribedCount() { return m_subCount; }
+
+private:
+    uint8_t m_subCount{0};
 };
 
 #endif // CONFIG_BT_ENABLED

@@ -1,6 +1,6 @@
 #ifndef MAC_FLOODING_H
 #define MAC_FLOODING_H
-
+#if !defined(LITE_VERSION)
 #include "Arduino.h"
 #include "lwip/prot/dhcp.h"
 #include "lwip/prot/ethernet.h"
@@ -16,7 +16,7 @@ private:
 #define MAC_ADDRESS_LENGTH 6
 #define IPV4_LENGTH 4
 #define ETHERNET_PROTOCOL_IPV4 0x0800
-#define PACKET_LENGTH 54 // ETH header + IPV4 header + some random data
+#define PACKET_LENGTH_MF 54 // ETH header + IPV4 header + some random data
 
     ip_hdr ipv4_pkt;
     eth_hdr eth_header;
@@ -42,4 +42,5 @@ public:
     void loop();
 };
 
+#endif
 #endif

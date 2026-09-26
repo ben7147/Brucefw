@@ -1,4 +1,6 @@
 #include "helpers.h"
+#ifndef LITE_VERSION
+#include <globals.h>
 
 bool _setupPsramFs() {
     // https://github.com/tobozo/ESP32-PsRamFS/blob/main/examples/PSRamFS_Test/PSRamFS_Test.ino
@@ -12,7 +14,7 @@ bool _setupPsramFs() {
 #endif
 
     if (!PSRamFS.begin()) {
-        Serial.println("PSRamFS Mount Failed");
+        serialDevice->println("PSRamFS Mount Failed");
         psRamFSMounted = false;
         return false;
     }
@@ -22,28 +24,37 @@ bool _setupPsramFs() {
 }
 
 char *_readFileFromSerial(size_t fileSizeChar) {
-    char *buf;
-    size_t bufSize = 0;
-    if (psramFound()) buf = (char *)ps_malloc((fileSizeChar) * sizeof(char));
-    else buf = (char *)malloc((fileSizeChar) * sizeof(char));
+    char *buf = psramFound() ? (char *)ps_malloc(fileSizeChar + 1) : (char *)malloc(fileSizeChar + 1);
+
     if (buf == NULL) {
-        Serial.printf("Could not allocate %d\n", fileSizeChar);
+        serialDevice->printf("Could not allocate %d\n", fileSizeChar);
         return NULL;
     }
+
+    size_t bufSize = 0;
     buf[0] = '\0';
 
+    unsigned long lastData = millis();
+
     String currLine = "";
-    Serial.println("Reading input data from serial buffer until EOF");
-    Serial.flush();
+    serialDevice->println("Reading input data from serial buffer until EOF");
+    serialDevice->flush();
     while (true) {
-        if (!Serial.available()) {
+        if (!serialDevice->available()) {
+            if (millis() - lastData > 5000) break; // timeout
             delay(10);
             continue;
         }
-        currLine = Serial.readStringUntil('\n');
-        if (currLine.startsWith("EOF")) break;
+
+        lastData = millis();
+        currLine = serialDevice->readStringUntil('\n');
+        if (currLine == "EOF") break;
         size_t lineLength = currLine.length();
-        if ((bufSize + lineLength + 1) > fileSizeChar) break;
+
+        if (bufSize + lineLength + 2 > fileSizeChar) {
+            log_e("Input truncated!");
+            break;
+        }
 
         memcpy(buf + bufSize, currLine.c_str(), lineLength);
         bufSize += lineLength;
@@ -52,3 +63,4 @@ char *_readFileFromSerial(size_t fileSizeChar) {
     buf[bufSize] = '\0';
     return buf;
 }
+#endif

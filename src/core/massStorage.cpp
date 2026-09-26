@@ -1,9 +1,7 @@
-#if defined(ARDUINO_USB_MODE) && !defined(USE_SD_MMC)
-
 #include "massStorage.h"
+#if defined(SOC_USB_OTG_SUPPORTED)
 #include "core/display.h"
 #include <USB.h>
-
 bool MassStorage::shouldStop = false;
 int32_t MassStorage::status = -1;
 
@@ -135,7 +133,7 @@ void drawUSBStickIcon(bool plugged) {
     static bool first = true;
 
     float scale;
-    if (bruceConfig.rotation & 0b01) scale = float((float)tftHeight / (float)135);
+    if (bruceConfigPins.rotation & 0b01) scale = float((float)tftHeight / (float)135);
     else scale = float((float)tftWidth / (float)240);
 
     int iconW = scale * 120;
@@ -182,4 +180,4 @@ void drawUSBStickIcon(bool plugged) {
     tft.fillRoundRect(ledX, ledY, ledW, ledH, radius, plugged ? TFT_GREEN : TFT_RED);
 }
 
-#endif // ARDUINO_USB_MODE
+#endif // SOC_USB_OTG_SUPPORTED
